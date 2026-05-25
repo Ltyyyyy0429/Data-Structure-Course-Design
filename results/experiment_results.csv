@@ -1,0 +1,7 @@
+scale,strategy,total_score,completed_tasks,timeout_tasks,total_distance,charging_times
+small,nearest,860,12,1,128.5,3
+small,largest,910,11,2,139.2,4
+medium,nearest,1710,25,3,285.7,7
+medium,largest,1840,24,4,309.4,8
+large,nearest,2920,43,6,524.9,13
+large,largest,3180,41,8,566.3,15

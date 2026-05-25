@@ -172,6 +172,9 @@ venv.bak/
 .dmypy.json
 dmypy.json
 
+# Local Matplotlib cache used by visualization/plot_results.py
+results/.matplotlib_cache/
+
 # Pyre type checker
 .pyre/
 
