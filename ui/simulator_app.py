@@ -1,9 +1,9 @@
-"""Pygame UI connected to B module Simulator.
+"""Pygame UI connected to B Simulator.
 
 Run from the project root:
     python3 ui/simulator_app.py
 
-The original demo UI is still available at:
+This keeps the original demo UI untouched:
     python3 ui/pygame_app.py
 """
 
@@ -13,7 +13,6 @@ import inspect
 import random
 import sys
 from pathlib import Path
-from typing import Dict
 
 import pygame
 
@@ -22,6 +21,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from simulator import Simulator
+from simulator.pathfinder_adapter import RealPathfinder
 from state_adapter import load_state_from_simulator
 import pygame_app
 
@@ -32,52 +32,52 @@ LOW_BATTERY_DEMO = True
 LOW_BATTERY_VALUE = 15.0
 
 
-def build_demo_graph() -> Dict:
-    """Create a small B-style graph that Simulator can read directly."""
+def build_b_graph_from_pathfinder(pathfinder: RealPathfinder) -> dict:
+    """Convert A map data to B simulator's current graph_data format."""
 
-    return {
-        "nodes": [
-            {"id": "depot_1", "x": 8, "y": 52, "type": "depot"},
-            {"id": "task_1", "x": 24, "y": 25, "type": "task_point"},
-            {"id": "task_2", "x": 25, "y": 72, "type": "task_point"},
-            {"id": "cs_1", "x": 45, "y": 18, "type": "charging_station"},
-            {"id": "task_3", "x": 48, "y": 43, "type": "task_point"},
-            {"id": "task_4", "x": 45, "y": 78, "type": "task_point"},
-            {"id": "task_5", "x": 67, "y": 31, "type": "task_point"},
-            {"id": "task_6", "x": 72, "y": 60, "type": "task_point"},
-            {"id": "cs_2", "x": 82, "y": 78, "type": "charging_station"},
-            {"id": "task_7", "x": 91, "y": 42, "type": "task_point"},
-        ],
-        "edges": [
-            {"from_node": "depot_1", "to_node": "task_1", "distance": 31.0},
-            {"from_node": "depot_1", "to_node": "task_2", "distance": 26.0},
-            {"from_node": "task_1", "to_node": "cs_1", "distance": 22.0},
-            {"from_node": "task_1", "to_node": "task_3", "distance": 30.0},
-            {"from_node": "task_2", "to_node": "task_4", "distance": 21.0},
-            {"from_node": "task_3", "to_node": "cs_1", "distance": 25.0},
-            {"from_node": "task_3", "to_node": "task_5", "distance": 23.0},
-            {"from_node": "task_3", "to_node": "task_6", "distance": 29.0},
-            {"from_node": "task_4", "to_node": "task_6", "distance": 32.0},
-            {"from_node": "task_4", "to_node": "cs_2", "distance": 37.0},
-            {"from_node": "task_5", "to_node": "task_7", "distance": 26.0},
-            {"from_node": "task_6", "to_node": "task_7", "distance": 26.0},
-            {"from_node": "task_6", "to_node": "cs_2", "distance": 21.0},
-            {"from_node": "cs_2", "to_node": "task_7", "distance": 37.0},
-        ],
-    }
+    nodes = []
+    for node_id, node in pathfinder.graph.nodes.items():
+        if node.type == "warehouse":
+            node_type = "depot"
+        elif node.type == "charging":
+            node_type = "charging_station"
+        else:
+            node_type = "task_point"
+        nodes.append({"id": node_id, "x": node.x, "y": node.y, "type": node_type})
+
+    edges = []
+    for edge in pathfinder.graph.edges:
+        edges.append(
+            {
+                "from_node": edge.from_node,
+                "to_node": edge.to_node,
+                "distance": edge.distance,
+            }
+        )
+
+    return {"nodes": nodes, "edges": edges}
 
 
 def create_simulator(strategy: str = "nearest") -> Simulator:
-    """Create a Simulator with several initial tasks for the UI demo."""
+    """Create a Simulator and replace MockPathfinder with RealPathfinder."""
 
     random.seed(2026)
-    simulator = Simulator(graph_data=build_demo_graph(), scale="small", strategy=strategy)
+    pathfinder = RealPathfinder("data/small_map.json")
+    simulator = Simulator(
+        graph_data=build_b_graph_from_pathfinder(pathfinder),
+        scale="small",
+        strategy=strategy,
+    )
+
+    if hasattr(simulator, "set_pathfinder"):
+        simulator.set_pathfinder(pathfinder)
+    else:
+        simulator._pathfinder = pathfinder
 
     if hasattr(simulator, "add_test_task"):
-        simulator.add_test_task("ui_t1", "task_1", 180, 0, 30)
-        simulator.add_test_task("ui_t2", "task_3", 260, 0, 38)
-        simulator.add_test_task("ui_t3", "task_6", 220, 0, 45)
-        simulator.add_test_task("ui_t4", "task_7", 320, 3, 55)
+        simulator.add_test_task("ui_t1", 5, 180, 0, 30)
+        simulator.add_test_task("ui_t2", 6, 260, 0, 38)
+        simulator.add_test_task("ui_t3", 9, 220, 0, 45)
         if hasattr(simulator, "next_task_id"):
             simulator.next_task_id = 100
 
@@ -88,7 +88,7 @@ def create_simulator(strategy: str = "nearest") -> Simulator:
 
 
 def enable_low_battery_demo(simulator: Simulator) -> None:
-    """Safely lower the first vehicle battery so charging logic is easy to see."""
+    """Safely lower the first vehicle battery so charging can be observed."""
 
     vehicles = getattr(simulator, "vehicles", None)
     if not vehicles:

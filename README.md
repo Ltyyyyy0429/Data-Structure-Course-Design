@@ -163,6 +163,41 @@ B 仿真引擎可以先按自己的模型输出 `raw_state`，但建议尽量包
 python3 ui/test_state_adapter.py
 ```
 
+## A-B 真实寻路联调说明
+
+运行 RealPathfinder demo：
+
+```bash
+python3 demo_real_pathfinder.py
+```
+
+`RealPathfinder` 位于 `simulator/pathfinder_adapter.py`，内部使用 A 模块的 `CityGraph.from_json()` 加载地图，并通过 `CityGraph.shortest_path()` 调用 Dijkstra 计算真实最短路径。
+
+它兼容 B 当前 `MockPathfinder` 的主要接口：
+
+- `get_shortest_path(start_node, end_node)`：返回路径列表。
+- `get_distance(start_node, end_node)`：返回最短路径距离。
+- `find_path(start_node, end_node)`：返回 `(path, distance)`。
+- `nearest_charging_station(start_node)`：返回最近充电站节点和距离。
+
+运行真实寻路版仿真 demo：
+
+```bash
+python3 demo_simulator_real_pathfinder.py
+```
+
+当前接入方式是：先创建 B 的 `Simulator`，再调用 `simulator.set_pathfinder(RealPathfinder("data/small_map.json"))` 替换原来的 `MockPathfinder`。这样 B 的 `_get_distance()` 和 `_get_path()` 会使用 A 的真实 CityGraph / Dijkstra。
+
+真实寻路版 Pygame 演示也可以运行：
+
+```bash
+python3 ui/simulator_app.py
+```
+
+这个入口会用 `RealPathfinder` 加载 A 的 `data/small_map.json`，创建 B 的 `Simulator`，再通过 D 的 `state_adapter` 和 Pygame 绘制仿真状态。
+
+注意：B 当前调度器仍是 `MockDispatcher`，任务分配逻辑还没有完全接入 C 的策略模块；本节完成的是 A-B 的真实路径和距离计算联调。
+
 ## Pygame 接入 Simulator 演示说明
 
 原假数据 UI 仍然使用：
@@ -193,4 +228,4 @@ python3 test_simulator.py
 - `2`：用 `largest` 策略重置 Simulator
 - `ESC`：退出
 
-注意：当前 `simulator_app.py` 接入的是 B 当前版本的 `Simulator`，其中路径规划和调度仍可能使用 `MockPathfinder` / `MockDispatcher`。后续 A/C 完全接入后，再把这些临时实现替换成正式模块。
+注意：当前 `simulator_app.py` 已经使用 A 的 `RealPathfinder` 进行路径距离计算，但 B 当前调度器仍可能使用 `MockDispatcher`。后续 C 完全接入后，再把临时调度实现替换成正式模块。

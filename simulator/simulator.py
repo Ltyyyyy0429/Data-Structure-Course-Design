@@ -112,6 +112,16 @@ class Simulator:
         
         print(f"[Simulator] 初始化完成 | 规模: {scale} | 策略: {strategy}")
         print(f"[Simulator] 节点数: {len(self.nodes)} | 车辆数: {len(self.vehicles)}")
+
+    def set_pathfinder(self, pathfinder) -> None:
+        """Replace MockPathfinder with a real pathfinder adapter.
+
+        The adapter should provide get_shortest_path() and get_distance().
+        RealPathfinder in simulator/pathfinder_adapter.py follows this shape.
+        """
+
+        self._pathfinder = pathfinder
+        print(f"[Simulator] 寻路器已切换为: {type(pathfinder).__name__}")
     
     def _init_vehicles(self):
         depot_nodes = [n for n in self.nodes.values() if n.type == 'depot']
