@@ -125,3 +125,40 @@ print(path, distance)
 - `nodes` 保存图中的节点，包括仓库、普通节点、充电站等。
 - `edges` 保存道路。当前地图生成器生成的是双向道路，JSON 中每条道路只保存一条记录，读取时会自动加入双向邻接表。
 - 如果 `add_edge()` 没有传入 `distance`，系统会自动根据两个节点的 x/y 坐标计算欧氏距离。
+
+## 联调 state 适配说明
+
+A/B/D 联调时，建议 D 的 Pygame UI 最终读取：
+
+```python
+from ui.state_adapter import normalize_state
+
+state = normalize_state(simulator.get_state())
+```
+
+B 仿真引擎可以先按自己的模型输出 `raw_state`，但建议尽量包含以下六个核心字段：
+
+```python
+{
+    "nodes": ...,
+    "edges": ...,
+    "vehicles": ...,
+    "tasks": ...,
+    "charging_stations": ...,
+    "metrics": ...
+}
+```
+
+当前 `ui/state_adapter.py` 会做这些兼容处理：
+
+- `depot` 会转换为 `warehouse`。
+- `charging_station` 会转换为 `charging`。
+- `from_node` / `to_node` 会转换为 `from` / `to`。
+- 如果车辆只有 `current_node` 或 `current_node_id`，会根据节点坐标补充 `x` / `y`。
+- 如果任务或充电站只有 `node_id`，也会根据节点坐标补充 `x` / `y`。
+
+运行适配层测试：
+
+```bash
+python3 ui/test_state_adapter.py
+```
