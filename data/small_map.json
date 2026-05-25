@@ -1,0 +1,126 @@
+{
+  "nodes": [
+    {
+      "id": 0,
+      "x": 8.0,
+      "y": 50.0,
+      "type": "warehouse"
+    },
+    {
+      "id": 1,
+      "x": 11.89,
+      "y": 5.88,
+      "type": "normal"
+    },
+    {
+      "id": 2,
+      "x": 39.61,
+      "y": 9.73,
+      "type": "normal"
+    },
+    {
+      "id": 3,
+      "x": 67.26,
+      "y": 7.77,
+      "type": "normal"
+    },
+    {
+      "id": 4,
+      "x": 92.55,
+      "y": 5.52,
+      "type": "charging"
+    },
+    {
+      "id": 5,
+      "x": 10.35,
+      "y": 50.38,
+      "type": "normal"
+    },
+    {
+      "id": 6,
+      "x": 36.91,
+      "y": 51.76,
+      "type": "normal"
+    },
+    {
+      "id": 7,
+      "x": 66.79,
+      "y": 47.7,
+      "type": "charging"
+    },
+    {
+      "id": 8,
+      "x": 95,
+      "y": 49.23,
+      "type": "normal"
+    },
+    {
+      "id": 9,
+      "x": 12.45,
+      "y": 89.56,
+      "type": "normal"
+    }
+  ],
+  "edges": [
+    {
+      "from": 1,
+      "to": 0,
+      "distance": 44.29
+    },
+    {
+      "from": 2,
+      "to": 1,
+      "distance": 27.99
+    },
+    {
+      "from": 3,
+      "to": 2,
+      "distance": 27.72
+    },
+    {
+      "from": 4,
+      "to": 3,
+      "distance": 25.39
+    },
+    {
+      "from": 5,
+      "to": 0,
+      "distance": 2.38
+    },
+    {
+      "from": 6,
+      "to": 5,
+      "distance": 26.6
+    },
+    {
+      "from": 7,
+      "to": 6,
+      "distance": 30.15
+    },
+    {
+      "from": 8,
+      "to": 7,
+      "distance": 28.25
+    },
+    {
+      "from": 9,
+      "to": 5,
+      "distance": 39.24
+    },
+    {
+      "from": 0,
+      "to": 6,
+      "distance": 28.96
+    },
+    {
+      "from": 4,
+      "to": 8,
+      "distance": 43.78
+    },
+    {
+      "from": 9,
+      "to": 0,
+      "distance": 39.81
+    }
+  ]
+}

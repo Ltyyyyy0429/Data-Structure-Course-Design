@@ -1,0 +1,451 @@
+{
+  "nodes": [
+    {
+      "id": 0,
+      "x": 8.0,
+      "y": 50.0,
+      "type": "warehouse"
+    },
+    {
+      "id": 1,
+      "x": 12.4,
+      "y": 7.19,
+      "type": "normal"
+    },
+    {
+      "id": 2,
+      "x": 25.36,
+      "y": 6.14,
+      "type": "normal"
+    },
+    {
+      "id": 3,
+      "x": 45.26,
+      "y": 9.37,
+      "type": "normal"
+    },
+    {
+      "id": 4,
+      "x": 59.41,
+      "y": 9.53,
+      "type": "normal"
+    },
+    {
+      "id": 5,
+      "x": 78.19,
+      "y": 5.51,
+      "type": "normal"
+    },
+    {
+      "id": 6,
+      "x": 95,
+      "y": 10.08,
+      "type": "normal"
+    },
+    {
+      "id": 7,
+      "x": 9.05,
+      "y": 31.09,
+      "type": "charging"
+    },
+    {
+      "id": 8,
+      "x": 29.03,
+      "y": 31.03,
+      "type": "normal"
+    },
+    {
+      "id": 9,
+      "x": 43.89,
+      "y": 30.39,
+      "type": "normal"
+    },
+    {
+      "id": 10,
+      "x": 61.24,
+      "y": 26.61,
+      "type": "normal"
+    },
+    {
+      "id": 11,
+      "x": 77.7,
+      "y": 27.48,
+      "type": "normal"
+    },
+    {
+      "id": 12,
+      "x": 95,
+      "y": 30.09,
+      "type": "normal"
+    },
+    {
+      "id": 13,
+      "x": 11.29,
+      "y": 51.65,
+      "type": "charging"
+    },
+    {
+      "id": 14,
+      "x": 26.85,
+      "y": 48.19,
+      "type": "normal"
+    },
+    {
+      "id": 15,
+      "x": 45.82,
+      "y": 50.01,
+      "type": "normal"
+    },
+    {
+      "id": 16,
+      "x": 60.92,
+      "y": 49.72,
+      "type": "normal"
+    },
+    {
+      "id": 17,
+      "x": 75.04,
+      "y": 47.96,
+      "type": "normal"
+    },
+    {
+      "id": 18,
+      "x": 94.96,
+      "y": 50.63,
+      "type": "charging"
+    },
+    {
+      "id": 19,
+      "x": 12.38,
+      "y": 72.98,
+      "type": "normal"
+    },
+    {
+      "id": 20,
+      "x": 25.43,
+      "y": 70.31,
+      "type": "normal"
+    },
+    {
+      "id": 21,
+      "x": 44.76,
+      "y": 71.33,
+      "type": "normal"
+    },
+    {
+      "id": 22,
+      "x": 60.99,
+      "y": 73.15,
+      "type": "normal"
+    },
+    {
+      "id": 23,
+      "x": 76.38,
+      "y": 70.23,
+      "type": "normal"
+    },
+    {
+      "id": 24,
+      "x": 93.35,
+      "y": 69.77,
+      "type": "charging"
+    },
+    {
+      "id": 25,
+      "x": 7.52,
+      "y": 92.97,
+      "type": "normal"
+    },
+    {
+      "id": 26,
+      "x": 27.42,
+      "y": 90.16,
+      "type": "normal"
+    },
+    {
+      "id": 27,
+      "x": 43.48,
+      "y": 92.3,
+      "type": "normal"
+    },
+    {
+      "id": 28,
+      "x": 58.6,
+      "y": 93.16,
+      "type": "normal"
+    },
+    {
+      "id": 29,
+      "x": 78.36,
+      "y": 94.11,
+      "type": "normal"
+    }
+  ],
+  "edges": [
+    {
+      "from": 1,
+      "to": 0,
+      "distance": 43.04
+    },
+    {
+      "from": 2,
+      "to": 1,
+      "distance": 13.0
+    },
+    {
+      "from": 3,
+      "to": 2,
+      "distance": 20.16
+    },
+    {
+      "from": 4,
+      "to": 3,
+      "distance": 14.15
+    },
+    {
+      "from": 5,
+      "to": 4,
+      "distance": 19.21
+    },
+    {
+      "from": 6,
+      "to": 5,
+      "distance": 17.42
+    },
+    {
+      "from": 7,
+      "to": 0,
+      "distance": 18.94
+    },
+    {
+      "from": 8,
+      "to": 7,
+      "distance": 19.98
+    },
+    {
+      "from": 9,
+      "to": 8,
+      "distance": 14.87
+    },
+    {
+      "from": 10,
+      "to": 4,
+      "distance": 17.18
+    },
+    {
+      "from": 11,
+      "to": 10,
+      "distance": 16.48
+    },
+    {
+      "from": 12,
+      "to": 11,
+      "distance": 17.5
+    },
+    {
+      "from": 13,
+      "to": 0,
+      "distance": 3.68
+    },
+    {
+      "from": 14,
+      "to": 13,
+      "distance": 15.94
+    },
+    {
+      "from": 15,
+      "to": 14,
+      "distance": 19.06
+    },
+    {
+      "from": 16,
+      "to": 15,
+      "distance": 15.1
+    },
+    {
+      "from": 17,
+      "to": 16,
+      "distance": 14.23
+    },
+    {
+      "from": 18,
+      "to": 17,
+      "distance": 20.1
+    },
+    {
+      "from": 19,
+      "to": 13,
+      "distance": 21.36
+    },
+    {
+      "from": 20,
+      "to": 19,
+      "distance": 13.32
+    },
+    {
+      "from": 21,
+      "to": 20,
+      "distance": 19.36
+    },
+    {
+      "from": 22,
+      "to": 21,
+      "distance": 16.33
+    },
+    {
+      "from": 23,
+      "to": 22,
+      "distance": 15.66
+    },
+    {
+      "from": 24,
+      "to": 23,
+      "distance": 16.98
+    },
+    {
+      "from": 25,
+      "to": 19,
+      "distance": 20.57
+    },
+    {
+      "from": 26,
+      "to": 20,
+      "distance": 19.95
+    },
+    {
+      "from": 27,
+      "to": 26,
+      "distance": 16.2
+    },
+    {
+      "from": 28,
+      "to": 27,
+      "distance": 15.14
+    },
+    {
+      "from": 29,
+      "to": 28,
+      "distance": 19.78
+    },
+    {
+      "from": 0,
+      "to": 14,
+      "distance": 18.94
+    },
+    {
+      "from": 1,
+      "to": 7,
+      "distance": 24.13
+    },
+    {
+      "from": 1,
+      "to": 8,
+      "distance": 29.07
+    },
+    {
+      "from": 2,
+      "to": 8,
+      "distance": 25.16
+    },
+    {
+      "from": 3,
+      "to": 9,
+      "distance": 21.06
+    },
+    {
+      "from": 5,
+      "to": 11,
+      "distance": 21.98
+    },
+    {
+      "from": 6,
+      "to": 12,
+      "distance": 20.01
+    },
+    {
+      "from": 6,
+      "to": 11,
+      "distance": 24.54
+    },
+    {
+      "from": 7,
+      "to": 13,
+      "distance": 20.68
+    },
+    {
+      "from": 8,
+      "to": 14,
+      "distance": 17.3
+    },
+    {
+      "from": 9,
+      "to": 10,
+      "distance": 17.76
+    },
+    {
+      "from": 9,
+      "to": 15,
+      "distance": 19.71
+    },
+    {
+      "from": 11,
+      "to": 17,
+      "distance": 20.65
+    },
+    {
+      "from": 12,
+      "to": 18,
+      "distance": 20.54
+    },
+    {
+      "from": 16,
+      "to": 10,
+      "distance": 23.11
+    },
+    {
+      "from": 18,
+      "to": 24,
+      "distance": 19.21
+    },
+    {
+      "from": 21,
+      "to": 27,
+      "distance": 21.01
+    },
+    {
+      "from": 22,
+      "to": 28,
+      "distance": 20.15
+    },
+    {
+      "from": 23,
+      "to": 17,
+      "distance": 22.31
+    },
+    {
+      "from": 24,
+      "to": 17,
+      "distance": 28.48
+    },
+    {
+      "from": 25,
+      "to": 26,
+      "distance": 20.1
+    },
+    {
+      "from": 25,
+      "to": 20,
+      "distance": 28.88
+    },
+    {
+      "from": 29,
+      "to": 23,
+      "distance": 23.96
+    },
+    {
+      "from": 29,
+      "to": 22,
+      "distance": 27.22
+    }
+  ]
+}
