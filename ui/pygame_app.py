@@ -4,7 +4,8 @@ Run from the project root:
     python3 ui/pygame_app.py
 
 This file currently uses demo data only. When the simulator from team B is
-ready, replace get_demo_state(demo_world) with simulator.get_state().
+ready, replace the demo state line with simulator.get_state(), or call
+load_state_from_simulator(simulator) from state_adapter.py.
 """
 
 from __future__ import annotations
@@ -14,6 +15,11 @@ from dataclasses import dataclass
 from typing import Dict, List, Tuple
 
 import pygame
+
+try:
+    from state_adapter import get_demo_state, load_state_from_simulator
+except ImportError:
+    from ui.state_adapter import get_demo_state, load_state_from_simulator
 
 try:
     from colors import (
@@ -295,20 +301,6 @@ class DemoWorld:
             "target_node": end_node["id"],
         }
 
-
-def get_demo_state(demo_world: DemoWorld) -> Dict:
-    """Temporary state interface.
-
-    Future integration point:
-        state = simulator.get_state()
-
-    Keep the returned dictionary keys stable so UI code does not need to know
-    whether the data comes from demo data or the real simulator.
-    """
-
-    return demo_world.get_state()
-
-
 def choose_fonts() -> FontSet:
     chinese_font_names = [
         "PingFang SC",
@@ -537,7 +529,8 @@ def main() -> None:
         if not paused:
             demo_world.update(dt)
 
-        # Future change: replace this line with state = simulator.get_state().
+        # Future change: replace this line with simulator.get_state(), or use:
+        # state = load_state_from_simulator(simulator)
         state = get_demo_state(demo_world)
 
         screen.fill(BACKGROUND)
