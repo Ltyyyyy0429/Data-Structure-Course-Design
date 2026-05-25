@@ -162,3 +162,35 @@ B 仿真引擎可以先按自己的模型输出 `raw_state`，但建议尽量包
 ```bash
 python3 ui/test_state_adapter.py
 ```
+
+## Pygame 接入 Simulator 演示说明
+
+原假数据 UI 仍然使用：
+
+```bash
+python3 ui/pygame_app.py
+```
+
+接入 B 当前 `Simulator` 的真实仿真 UI 使用：
+
+```bash
+python3 ui/simulator_app.py
+```
+
+B 仿真引擎终端测试使用：
+
+```bash
+python3 test_simulator.py
+```
+
+`ui/simulator_app.py` 会创建 B 的 `Simulator`，循环调用当前版本提供的 `update(dt)` 方法，并通过 `ui/state_adapter.py` 转换成 D 的 Pygame 可绘制 state。该入口还保留了低电量演示：默认会把第一辆车电量设为 15，方便观察 `charging_times` 或充电站负荷变化。
+
+键盘操作：
+
+- `SPACE`：暂停 / 继续
+- `R`：重置 Simulator
+- `1`：用 `nearest` 策略重置 Simulator
+- `2`：用 `largest` 策略重置 Simulator
+- `ESC`：退出
+
+注意：当前 `simulator_app.py` 接入的是 B 当前版本的 `Simulator`，其中路径规划和调度仍可能使用 `MockPathfinder` / `MockDispatcher`。后续 A/C 完全接入后，再把这些临时实现替换成正式模块。
