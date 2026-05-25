@@ -197,3 +197,35 @@ python3 ui/simulator_app.py
 这个入口会用 `RealPathfinder` 加载 A 的 `data/small_map.json`，创建 B 的 `Simulator`，再通过 D 的 `state_adapter` 和 Pygame 绘制仿真状态。
 
 注意：B 当前调度器仍是 `MockDispatcher`，任务分配逻辑还没有完全接入 C 的策略模块；本节完成的是 A-B 的真实路径和距离计算联调。
+
+## Pygame 接入 Simulator 演示说明
+
+原假数据 UI 仍然使用：
+
+```bash
+python3 ui/pygame_app.py
+```
+
+接入 B 当前 `Simulator` 的真实仿真 UI 使用：
+
+```bash
+python3 ui/simulator_app.py
+```
+
+B 仿真引擎终端测试使用：
+
+```bash
+python3 test_simulator.py
+```
+
+`ui/simulator_app.py` 会创建 B 的 `Simulator`，循环调用当前版本提供的 `update(dt)` 方法，并通过 `ui/state_adapter.py` 转换成 D 的 Pygame 可绘制 state。该入口还保留了低电量演示：默认会把第一辆车电量设为 15，方便观察 `charging_times` 或充电站负荷变化。
+
+键盘操作：
+
+- `SPACE`：暂停 / 继续
+- `R`：重置 Simulator
+- `1`：用 `nearest` 策略重置 Simulator
+- `2`：用 `largest` 策略重置 Simulator
+- `ESC`：退出
+
+注意：当前 `simulator_app.py` 已经使用 A 的 `RealPathfinder` 进行路径距离计算，但 B 当前调度器仍可能使用 `MockDispatcher`。后续 C 完全接入后，再把临时调度实现替换成正式模块。
