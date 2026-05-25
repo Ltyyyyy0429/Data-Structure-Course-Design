@@ -26,7 +26,13 @@ python3 ui/pygame_app.py
 - `R`：重置假数据
 - `ESC`：退出
 
-后续 B 的仿真引擎完成后，只需要把 UI 中的 `get_demo_state()` 数据来源替换为 `simulator.get_state()`。
+后续 B 的仿真引擎完成后，联调时只需要在 `pygame_app.py` 中把 demo state 替换成 `simulator.get_state()`。
+
+当前已经新增 `ui/state_adapter.py` 作为 UI 和仿真引擎之间的数据对接层：
+
+- `get_demo_state(demo_world)`：保留当前假数据原型。
+- `load_state_from_simulator(simulator)`：后续接入真实仿真器时调用，内部会执行 `simulator.get_state()`。
+- `validate_state(state)`：检查 state 是否包含 `nodes`、`edges`、`vehicles`、`tasks`、`charging_stations`、`metrics` 六个核心字段。
 
 ### 3. 生成 Matplotlib 实验图表
 
