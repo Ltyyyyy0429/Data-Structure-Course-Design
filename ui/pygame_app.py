@@ -364,25 +364,37 @@ def draw_centered_text(
     surface.blit(text_surface, text_rect)
 
 
+def build_node_lookup(nodes: Dict) -> Dict:
+    """Accept both old list nodes and normalized dict nodes."""
+
+    if isinstance(nodes, dict):
+        return {node_id: {"id": node_id, **node} for node_id, node in nodes.items()}
+
+    return {node["id"]: node for node in nodes}
+
+
 def draw_map(surface: pygame.Surface, state: Dict, fonts: FontSet) -> None:
     pygame.draw.rect(surface, MAP_BACKGROUND, MAP_RECT, border_radius=8)
     pygame.draw.rect(surface, PANEL_BORDER, MAP_RECT, width=1, border_radius=8)
     draw_grid(surface)
 
-    node_by_id = {node["id"]: node for node in state["nodes"]}
+    node_by_id = build_node_lookup(state["nodes"])
+    nodes = list(node_by_id.values())
 
     for edge in state["edges"]:
+        if edge["from"] not in node_by_id or edge["to"] not in node_by_id:
+            continue
         start_node = node_by_id[edge["from"]]
         end_node = node_by_id[edge["to"]]
         start_pos = world_to_screen(start_node["x"], start_node["y"])
         end_pos = world_to_screen(end_node["x"], end_node["y"])
         pygame.draw.line(surface, ROAD, start_pos, end_pos, width=3)
 
-    for node in state["nodes"]:
+    for node in nodes:
         if node["type"] == "normal":
             pygame.draw.circle(surface, NORMAL_NODE, world_to_screen(node["x"], node["y"]), 5)
 
-    for node in state["nodes"]:
+    for node in nodes:
         if node["type"] == "warehouse":
             draw_warehouse(surface, node, fonts)
 
@@ -474,7 +486,7 @@ def draw_panel(surface: pygame.Surface, state: Dict, fonts: FontSet, paused: boo
     y += 34
 
     for vehicle in state["vehicles"]:
-        status = STATUS_TEXT[fonts.language][vehicle["status"]]
+        status = STATUS_TEXT[fonts.language].get(vehicle["status"], vehicle["status"])
         battery = vehicle["battery"]
         battery_color = SUCCESS if battery >= 55 else WARNING if battery >= 30 else DANGER
 
