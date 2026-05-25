@@ -1,4 +1,4 @@
-"""仿真引擎核心类 - 统一整数ID版本（累积距离逐节点移动）"""
+"""仿真引擎核心类 - 最终修复版（大电池容量 + 完整充电逻辑）"""
 from typing import Dict, List, Any, Optional
 import random
 import math
@@ -13,12 +13,14 @@ from strategy import Dispatcher
 
 
 class Simulator:
+    # ========== 车辆参数（针对真实地图优化）==========
     VEHICLE_SPEED = 40.0  # km/h
-    VEHICLE_BATTERY_CAPACITY = 100.0  # kWh
+    VEHICLE_BATTERY_CAPACITY = 500.0  # kWh（增大容量，适应长距离）
     VEHICLE_LOAD_CAPACITY = 1000.0  # kg
-    ENERGY_PER_KM = 1.2  # kWh/km
-    CHARGING_RATE = 50.0  # kWh/h
+    ENERGY_PER_KM = 0.3  # kWh/km（降低能耗，从1.2改为0.3）
+    CHARGING_RATE = 100.0  # kWh/h（加快充电速度）
     CHARGING_PORTS_PER_STATION = 2
+    LOW_BATTERY_THRESHOLD = 80.0  # 低电量阈值（kWh），当电量低于80时去充电
     
     def __init__(self, graph_data: dict, scale: str, strategy: str):
         self.nodes: Dict[int, Node] = {}
@@ -55,7 +57,8 @@ class Simulator:
         print(f"[Simulator] A模块图已加载: {len(self.nodes)} 节点, {len(self.edges)} 边")
         
         self.vehicles: Dict[str, Vehicle] = {}
-        self.vehicle_accumulated_distance: Dict[str, float] = {}  # 累积移动距离
+        self.vehicle_accumulated_distance: Dict[str, float] = {}
+        self.saved_tasks: Dict[str, Optional[str]] = {}  # 保存被中断的任务
         self._init_vehicles()
         
         self.tasks: Dict[str, Task] = {}
@@ -82,6 +85,7 @@ class Simulator:
         
         print(f"[Simulator] 初始化完成 | 规模: {scale}")
         print(f"[Simulator] 节点数: {len(self.nodes)} | 车辆数: {len(self.vehicles)}")
+        print(f"[Simulator] 电池容量: {self.VEHICLE_BATTERY_CAPACITY}kWh, 能耗: {self.ENERGY_PER_KM}kWh/km")
     
     def _init_vehicles(self):
         depot_nodes = [n for n in self.nodes.values() if n.type == 'depot']
@@ -93,6 +97,7 @@ class Simulator:
             )
             self.vehicles[vehicle.id] = vehicle
             self.vehicle_accumulated_distance[vehicle.id] = 0.0
+            self.saved_tasks[vehicle.id] = None
     
     def _init_charging_stations(self):
         for node in self.nodes.values():
@@ -173,7 +178,7 @@ class Simulator:
         self._dispatch_tasks()
     
     def _move_vehicles(self, dt: float):
-        """移动车辆 - 使用累积距离逐节点移动"""
+        """移动车辆 - 逐节点移动，带低电量检测"""
         dt_hours = dt / 60.0
         distance_per_step = self.VEHICLE_SPEED * dt_hours
         
@@ -181,104 +186,145 @@ class Simulator:
             if vehicle.status != VehicleStatus.MOVING:
                 continue
             
+            # ========== 低电量检测（优先处理） ==========
+            if vehicle.battery < self.LOW_BATTERY_THRESHOLD:
+                # 找最近充电站
+                nearest_cs = self._find_nearest_charging_station(vehicle.current_node)
+                if nearest_cs and nearest_cs != vehicle.current_node:
+                    # 保存当前任务
+                    if vehicle.target_node != 0 and vehicle.target_node != nearest_cs:
+                        self.saved_tasks[vehicle.id] = vehicle.target_node
+                        print(f"[Simulator] {vehicle.id} 电量不足 ({vehicle.battery:.1f}kWh)，中断任务前往充电站")
+                    
+                    # 获取到充电站的路径
+                    try:
+                        path_int, _ = self.city_graph.shortest_path(vehicle.current_node, nearest_cs)
+                        vehicle.path = path_int[1:] if len(path_int) > 1 else []
+                    except:
+                        vehicle.path = [nearest_cs]
+                    
+                    vehicle.charging_target = nearest_cs
+                    vehicle.target_node = nearest_cs
+                    self.vehicle_accumulated_distance[vehicle.id] = 0.0
+                    continue  # 重新开始循环
+            
+            # 正常移动逻辑
             if not vehicle.path:
                 vehicle.status = VehicleStatus.IDLE
                 vehicle.target_node = 0
                 self.vehicle_accumulated_distance[vehicle.id] = 0.0
+                
+                # 如果有保存的任务，重新分配
+                if self.saved_tasks.get(vehicle.id):
+                    saved_task_id = self.saved_tasks[vehicle.id]
+                    saved_task = self.tasks.get(saved_task_id)
+                    if saved_task and saved_task.status == TaskStatus.ASSIGNED:
+                        vehicle.target_node = saved_task.node_id
+                        vehicle.status = VehicleStatus.MOVING
+                        try:
+                            path_int, _ = self.city_graph.shortest_path(vehicle.current_node, saved_task.node_id)
+                            vehicle.path = path_int[1:] if len(path_int) > 1 else []
+                        except:
+                            vehicle.path = [saved_task.node_id]
+                        self.vehicle_accumulated_distance[vehicle.id] = 0.0
+                        print(f"[Simulator] {vehicle.id} 继续执行任务 {saved_task_id}")
+                    self.saved_tasks[vehicle.id] = None
+                continue
+            
+            # 获取路径中的下一个节点
+            next_node = vehicle.path[0]
+            dist = self._get_distance(vehicle.current_node, next_node)
+            
+            if dist <= 0:
+                vehicle.path.pop(0)
                 continue
             
             # 累积移动距离
             self.vehicle_accumulated_distance[vehicle.id] += distance_per_step
             
-            # 检查是否能到达路径中的下一个节点
-            next_node = vehicle.path[0]
-            dist_to_next = self._get_distance(vehicle.current_node, next_node)
-            
-            if self.vehicle_accumulated_distance[vehicle.id] >= dist_to_next:
+            if self.vehicle_accumulated_distance[vehicle.id] >= dist:
                 # 到达下一个节点
-                self.metrics.total_distance += dist_to_next
-                vehicle.battery -= dist_to_next * self.ENERGY_PER_KM
+                self.metrics.total_distance += dist
+                vehicle.battery -= dist * self.ENERGY_PER_KM
+                old_node = vehicle.current_node
                 vehicle.current_node = next_node
                 vehicle.path.pop(0)
-                self.vehicle_accumulated_distance[vehicle.id] -= dist_to_next
+                self.vehicle_accumulated_distance[vehicle.id] -= dist
                 
-                print(f"[Simulator] {vehicle.id} 到达 {next_node}，剩余电量 {vehicle.battery:.1f}kWh")
+                print(f"[Simulator] {vehicle.id} 从 {old_node} 到达 {next_node}，剩余电量 {vehicle.battery:.1f}kWh")
                 
-                # 检查是否还有更多节点
                 if not vehicle.path:
                     vehicle.status = VehicleStatus.IDLE
                     vehicle.target_node = 0
                     print(f"[Simulator] {vehicle.id} 到达最终目标")
             else:
-                # 还在路上，消耗电量（按实际移动距离）
+                # 还在路上，消耗电量
                 vehicle.battery -= distance_per_step * self.ENERGY_PER_KM
                 self.metrics.total_distance += distance_per_step
     
     def _handle_charging(self, dt: float):
+        """处理充电逻辑"""
         dt_hours = dt / 60.0
         charge_amount = self.CHARGING_RATE * dt_hours
         
-        vehicles_to_charge = []
-        
         for vehicle in self.vehicles.values():
-            if vehicle.status == VehicleStatus.CHARGING:
-                vehicle.battery += charge_amount
-                if vehicle.battery >= self.VEHICLE_BATTERY_CAPACITY:
-                    vehicle.battery = self.VEHICLE_BATTERY_CAPACITY
-                    vehicle.status = VehicleStatus.IDLE
-                    cs = self.charging_stations.get(vehicle.current_node)
-                    if cs:
-                        cs.charging_count -= 1
-                        print(f"[Simulator] {vehicle.id} 充电完成，释放 {vehicle.current_node} 充电桩")
-                    vehicles_to_charge.append(vehicle.current_node)
-        
-        for cs_node in set(vehicles_to_charge):
-            cs = self.charging_stations.get(cs_node)
-            if cs and cs.queue_length > 0 and cs.charging_count < self.CHARGING_PORTS_PER_STATION:
-                for v in self.vehicles.values():
-                    if (v.status == VehicleStatus.IDLE and 
-                        hasattr(v, 'charging_target') and
-                        v.charging_target == cs_node):
-                        v.status = VehicleStatus.CHARGING
-                        cs.charging_count += 1
-                        cs.queue_length -= 1
-                        self.vehicle_accumulated_distance[v.id] = 0.0
-                        print(f"[Simulator] {v.id} 从排队开始充电 at {cs_node}")
-                        break
+            if vehicle.status != VehicleStatus.CHARGING:
+                continue
+            
+            vehicle.battery += charge_amount
+            if vehicle.battery >= self.VEHICLE_BATTERY_CAPACITY:
+                vehicle.battery = self.VEHICLE_BATTERY_CAPACITY
+                vehicle.status = VehicleStatus.IDLE
+                cs = self.charging_stations.get(vehicle.current_node)
+                if cs:
+                    cs.charging_count -= 1
+                    print(f"[Simulator] {vehicle.id} 充电完成，释放 {vehicle.current_node} 充电桩")
+                
+                # 检查排队车辆
+                if cs and cs.queue_length > 0:
+                    for v in self.vehicles.values():
+                        if (hasattr(v, 'charging_target') and 
+                            v.charging_target == vehicle.current_node and
+                            v.status == VehicleStatus.IDLE):
+                            v.status = VehicleStatus.CHARGING
+                            cs.charging_count += 1
+                            cs.queue_length -= 1
+                            print(f"[Simulator] {v.id} 从排队开始充电")
+                            break
     
     def _check_low_battery(self):
+        """检查低电量（空闲车辆）"""
         for vehicle in self.vehicles.values():
-            if vehicle.battery < 20 and vehicle.status == VehicleStatus.IDLE:
+            if vehicle.battery < self.LOW_BATTERY_THRESHOLD and vehicle.status == VehicleStatus.IDLE:
                 nearest_cs = self._find_nearest_charging_station(vehicle.current_node)
                 if not nearest_cs:
                     continue
                 
                 if vehicle.current_node == nearest_cs:
-                    cs = self.charging_stations[nearest_cs]
+                    cs = self.charging_stations.get(nearest_cs)
                     if cs.charging_count < self.CHARGING_PORTS_PER_STATION:
                         cs.charging_count += 1
                         vehicle.status = VehicleStatus.CHARGING
                         self.metrics.charging_times += 1
-                        print(f"[Simulator] {vehicle.id} 已在充电站，开始充电")
+                        print(f"[Simulator] {vehicle.id} 电量不足 ({vehicle.battery:.1f}kWh)，开始在 {nearest_cs} 充电")
                     else:
                         cs.queue_length += 1
-                        print(f"[Simulator] {vehicle.id} 在 {nearest_cs} 排队充电")
+                        vehicle.charging_target = nearest_cs
+                        print(f"[Simulator] {vehicle.id} 电量不足 ({vehicle.battery:.1f}kWh)，在 {nearest_cs} 排队")
                     continue
                 
                 # 获取到充电站的路径
                 try:
                     path_int, _ = self.city_graph.shortest_path(vehicle.current_node, nearest_cs)
-                    path = path_int[1:]  # 去掉第一个（当前位置）
+                    vehicle.path = path_int[1:] if len(path_int) > 1 else []
                 except:
-                    path = [nearest_cs]
+                    vehicle.path = [nearest_cs]
                 
-                vehicle.target_node = nearest_cs
                 vehicle.charging_target = nearest_cs
+                vehicle.target_node = nearest_cs
                 vehicle.status = VehicleStatus.MOVING
-                vehicle.path = path
                 self.vehicle_accumulated_distance[vehicle.id] = 0.0
-                
-                print(f"[Simulator] {vehicle.id} 电量不足 ({vehicle.battery:.1f}kWh)，前往 {nearest_cs} 充电，路径: {path}")
+                print(f"[Simulator] {vehicle.id} 电量不足 ({vehicle.battery:.1f}kWh)，前往 {nearest_cs} 充电")
     
     def _find_nearest_charging_station(self, from_node: int) -> Optional[int]:
         try:
@@ -322,7 +368,7 @@ class Simulator:
                         print(f"[Simulator] 警告: {vehicle.id} 超载！扣50分")
                     break
             
-            print(f"[Simulator] 任务 {task.id} 完成！得分: {score:.1f} (提前 {time_early:.1f}分钟)")
+            print(f"[Simulator] 任务 {task.id} 完成！得分: {score:.1f}")
         
         for task in self.tasks.values():
             if task.status == TaskStatus.WAITING and self.current_time > task.deadline:
@@ -341,7 +387,7 @@ class Simulator:
                     task = Task(
                         id=f"t{self.next_task_id}", node_id=random.choice(task_points),
                         weight=random.randint(50, 500), release_time=self.current_time,
-                        deadline=self.current_time + random.randint(10, 60),
+                        deadline=self.current_time + random.randint(60, 120),
                         status=TaskStatus.WAITING
                     )
                     self.tasks[task.id] = task
@@ -367,11 +413,10 @@ class Simulator:
             vehicle.target_node = task.node_id
             vehicle.status = VehicleStatus.MOVING
             
-            # 使用 A 模块获取真实最短路径
             try:
                 path_int, _ = self.city_graph.shortest_path(vehicle.current_node, task.node_id)
-                vehicle.path = path_int[1:]  # 去掉第一个（当前位置）
-                print(f"[Simulator] 分配任务 {task.id} 给 {vehicle.id}, 从 {vehicle.current_node} 到 {task.node_id}, 路径: {vehicle.path}")
+                vehicle.path = path_int[1:] if len(path_int) > 1 else []
+                print(f"[Simulator] 分配任务 {task.id} 给 {vehicle.id}, 从 {vehicle.current_node} 到 {task.node_id}, 路径长度: {len(vehicle.path)}")
             except Exception as e:
                 vehicle.path = [task.node_id]
                 print(f"[Simulator] 分配任务 {task.id} 给 {vehicle.id}, 路径计算失败: {e}")
