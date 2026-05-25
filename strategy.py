@@ -1,91 +1,85 @@
+# strategy.py
 from core.graph import CityGraph
-from enum import Enum
-from typing import Dict, List
 
-# 1. 定义车辆的原子动作
-class ActionType(Enum):
-    MOVE_TO = "MOVE_TO"   # 前往某节点
-    PICKUP = "PICKUP"     # 装货
-    CHARGE = "CHARGE"     # 充电
-    IDLE = "IDLE"         # 待命
-
-# 2. 定义统一的动作指令结构
-class VehicleAction:
-    def __init__(self, vehicle_id: str, action_type: ActionType, target_node_id: int = None):
-        self.vehicle_id = vehicle_id
-        self.action_type = action_type
-        self.target_node_id = target_node_id
-
-# 3. 调度中心
 class Dispatcher:
     def __init__(self, city_graph: CityGraph, strategy_name: str = "nearest"):
         """
-        :param city_graph: A 模块实例化的城市地图对象
-        :param strategy_name: UI 层传入的策略名称，默认为 nearest
+        初始化调度中心
+        :param city_graph: A 模块提供的城市地图实例 (用于计算最短路径)
+        :param strategy_name: 调度策略，支持 "nearest" (最近优先) 和 "largest" (最大权重优先)
         """
         self.city_graph = city_graph
         self.strategy_name = strategy_name
 
-    def dispatch(self, state: Dict) -> List[VehicleAction]:
+    def dispatch(self, state: dict) -> list:
         """
-        全组统一联调入口：接收 B 的状态字典，返回动作列表
+        核心调度算法，接收 B 模块的状态字典，返回 B 模块可执行的指令列表
         """
-        if self.strategy_name == "nearest":
-            return self._nearest_task_strategy(state)
-        elif self.strategy_name == "largest":
-            return self._largest_task_first_strategy(state)
-        return []
-
-    def _nearest_task_strategy(self, state: Dict) -> List[VehicleAction]:
         actions = []
-        vehicles = state.get("vehicles", [])
-        tasks = state.get("tasks", [])
         
-        idle_vehicles = [v for v in vehicles if v.get('status') == 'IDLE']
-        unassigned_tasks = [t for t in tasks if t.get('status') == 'UNASSIGNED']
+        # 1. 完美适配 B 同学的状态判定：使用 lower() 兼容 'idle' 和 'waiting'
+        idle_vehicles = [v for v in state.get('vehicles', []) 
+                         if str(v.get('status', '')).lower() == 'idle']
+        
+        unassigned_tasks = [t for t in state.get('tasks', []) 
+                            if str(t.get('status', '')).lower() == 'waiting']
 
-        for vehicle in idle_vehicles:
-            if not unassigned_tasks:
-                break
-                
-            best_task = None
-            min_dist = float('inf')
+        # 如果没有空闲车辆或没有待分配任务，直接返回空指令
+        if not idle_vehicles or not unassigned_tasks:
+            return actions
+
+        # 2. 最大权重优先策略 (Largest Weight First)
+        if self.strategy_name == "largest":
+            # 按任务权重降序排列
+            unassigned_tasks.sort(key=lambda x: x.get('weight', 0), reverse=True)
             
-            for task in unassigned_tasks:
-                # 关键修正：确保节点 ID 转换为 int 类型以适配 A 模块
-                start_node = int(vehicle['current_node'])
-                end_node = int(task['node_id'])
+            for vehicle in idle_vehicles:
+                if not unassigned_tasks:
+                    break
+                task = unassigned_tasks.pop(0)
                 
-                # 关键修正：解包 A 模块返回的元组 (path_list, distance)
-                path, road_distance = self.city_graph.shortest_path(start_node, end_node)
+                # 严格按照 B 仿真器引擎要求的字典格式输出
+                actions.append({
+                    'vehicle_id': vehicle['id'],
+                    'task_id': task['id'],
+                    'action': 'assign'
+                })
+
+        # 3. 最近任务优先策略 (Nearest Task First)
+        elif self.strategy_name == "nearest":
+            for vehicle in idle_vehicles:
+                if not unassigned_tasks:
+                    break
                 
-                if path: # 如果路径存在（列表非空）
-                    if road_distance < min_dist:
-                        min_dist = road_distance
-                        best_task = task
-            
-            if best_task:
-                actions.append(VehicleAction(vehicle['id'], ActionType.MOVE_TO, int(best_task['node_id'])))
-                unassigned_tasks.remove(best_task)
+                best_task = None
+                shortest_dist = float('inf')
                 
-        return actions
-
-    def _largest_task_first_strategy(self, state: Dict) -> List[VehicleAction]:
-        actions = []
-        vehicles = state.get("vehicles", [])
-        tasks = state.get("tasks", [])
-
-        idle_vehicles = [v for v in vehicles if v.get('status') == 'IDLE']
-        unassigned_tasks = [t for t in tasks if t.get('status') == 'UNASSIGNED']
-
-        # 按权重（weight）降序排列任务
-        sorted_tasks = sorted(unassigned_tasks, key=lambda x: x.get('weight', 0), reverse=True)
-
-        for vehicle in idle_vehicles:
-            if not sorted_tasks:
-                break
+                # 获取小车当前节点，转为 int 以适配 A 同学的图算法
+                start_node = int(vehicle.get('current_node', 0))
                 
-            best_task = sorted_tasks.pop(0)
-            actions.append(VehicleAction(vehicle['id'], ActionType.MOVE_TO, int(best_task['node_id'])))
-            
+                for task in unassigned_tasks:
+                    # 获取任务节点，转为 int 以适配 A 同学
+                    target_node = int(task.get('node_id', 0))
+                    
+                    try:
+                        # 调用 A 模块的最短路径算法计算真实路网距离
+                        # A 返回的是 (path_list, distance)，我们只需要 distance
+                        _, dist = self.city_graph.shortest_path(start_node, target_node)
+                        
+                        if dist < shortest_dist:
+                            shortest_dist = dist
+                            best_task = task
+                    except Exception:
+                        # 容错处理：如果 A 的算法在两个节点间找不到路，跳过该任务
+                        pass 
+                
+                if best_task:
+                    # 按照 B 引擎格式输出分配指令
+                    actions.append({
+                        'vehicle_id': vehicle['id'],
+                        'task_id': best_task['id'],
+                        'action': 'assign'
+                    })
+                    unassigned_tasks.remove(best_task)
+                    
         return actions
