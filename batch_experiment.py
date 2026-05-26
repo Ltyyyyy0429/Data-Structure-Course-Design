@@ -1,8 +1,14 @@
-"""批量实验脚本 - 使用 A 同学的真实地图数据（180分钟仿真）"""
+"""批量实验脚本 - 支持多策略 × 多规模 × 多难度"""
+
 import json
 import csv
 import os
+import sys
+
 from simulator import Simulator
+from simulator.pathfinder_adapter import RealPathfinder
+from core.difficulty import get_difficulty_config
+from core.map_generator import generate_all_maps
 
 
 def get_default_graph():
@@ -73,12 +79,21 @@ def get_task_nodes(graph_data: dict) -> list:
     return task_nodes
 
 
-def run_single_experiment(scale: str, strategy: str, duration: int = 180) -> dict:
+def run_single_experiment(scale: str, strategy: str, duration: int = 180,
+                         difficulty: str = "easy") -> dict:
     """运行单次实验（默认180分钟）"""
-    print(f"  运行 {scale} / {strategy} ...")
-    
+    print(f"  运行 {scale} / {strategy} / {difficulty} ...")
+
+    # Generate map if needed
+    map_path = f"data/{scale}_map.json"
+    if not os.path.exists(map_path):
+        print(f"    生成缺失的地图: {scale}")
+        generate_all_maps()
+
     graph_data = load_graph_data(scale)
-    sim = Simulator(graph_data, scale, strategy)
+    pathfinder = RealPathfinder(map_path)
+    config = get_difficulty_config(scale, difficulty)
+    sim = Simulator(graph_data, scale, strategy, pathfinder=pathfinder, config=config)
     
     # 获取任务点并添加初始任务
     task_nodes = get_task_nodes(graph_data)
@@ -106,21 +121,26 @@ def run_single_experiment(scale: str, strategy: str, duration: int = 180) -> dic
     return state['metrics']
 
 
-def run_batch_experiment():
+def run_batch_experiment(difficulty: str = "easy"):
     """运行批量实验"""
-    scales = ["small", "medium", "large"]
-    strategies = ["nearest", "largest"]
+    scales = ["small", "medium", "large", "extra_large"]
+    strategies = ["nearest", "largest", "energy_aware_hybrid"]
     results = []
-    
+
     print("=" * 60)
-    print("批量实验开始（使用 A 同学真实地图）")
-    print("仿真时长: 180分钟 (3小时)")
+    print("批量实验开始")
+    print(f"仿真时长: 180分钟 (3小时) | 难度: {difficulty}")
+    print(f"规模: {scales} | 策略: {strategies}")
     print("=" * 60)
-    
+
+    # Ensure all maps exist
+    ensure_all_maps()
+
     for scale in scales:
         for strategy in strategies:
             try:
-                metrics = run_single_experiment(scale, strategy, duration=180)
+                metrics = run_single_experiment(scale, strategy, duration=180,
+                                                difficulty=difficulty)
                 results.append({
                     "scale": scale,
                     "strategy": strategy,
@@ -132,39 +152,55 @@ def run_batch_experiment():
                 })
             except Exception as e:
                 print(f"  错误: {scale}/{strategy} - {e}")
-    
+                import traceback
+                traceback.print_exc()
+
     # 保存结果到 CSV
     os.makedirs("results", exist_ok=True)
-    with open('results/experiment_results.csv', 'w', newline='', encoding='utf-8') as f:
-        fieldnames = ["scale", "strategy", "total_score", "completed_tasks", 
+    csv_path = f'results/experiment_results_{difficulty}.csv'
+    with open(csv_path, 'w', newline='', encoding='utf-8') as f:
+        fieldnames = ["scale", "strategy", "total_score", "completed_tasks",
                       "timeout_tasks", "total_distance", "charging_times"]
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(results)
-    
+
     print("\n" + "=" * 60)
-    print("实验结果（真实地图，180分钟仿真）")
+    print(f"实验结果（{difficulty.upper()} 难度，180分钟仿真）")
     print("=" * 60)
-    print(f"{'规模':<10} {'策略':<12} {'得分':<10} {'完成任务':<10} {'总里程':<10} {'充电次数':<8}")
-    print("-" * 65)
+    header = f"{'规模':<12} {'策略':<20} {'得分':<10} {'完成任务':<10} {'超时':<8} {'总里程':<10} {'充电':<6}"
+    print(header)
+    print("-" * len(header))
     for r in results:
-        print(f"{r['scale']:<10} {r['strategy']:<12} {r['total_score']:<10.1f} {r['completed_tasks']:<10} {r['total_distance']:<10.1f} {r['charging_times']:<8}")
-    
-    print(f"\n结果已保存到: results/experiment_results.csv")
-    
+        print(f"{r['scale']:<12} {r['strategy']:<20} {r['total_score']:<10.1f} "
+              f"{r['completed_tasks']:<10} {r['timeout_tasks']:<8} "
+              f"{r['total_distance']:<10.1f} {r['charging_times']:<6}")
+
+    print(f"\n结果已保存到: {csv_path}")
+
     # 输出总结
     print("\n" + "=" * 60)
     print("策略对比总结")
     print("=" * 60)
     for scale in scales:
-        nearest_score = next(r['total_score'] for r in results if r['scale'] == scale and r['strategy'] == 'nearest')
-        largest_score = next(r['total_score'] for r in results if r['scale'] == scale and r['strategy'] == 'largest')
-        winner = "nearest" if nearest_score > largest_score else "largest"
-        diff = abs(nearest_score - largest_score)
-        print(f"{scale}: nearest={nearest_score:.1f}, largest={largest_score:.1f}, 胜者={winner} (相差{diff:.1f}分)")
-    
+        scale_results = [r for r in results if r['scale'] == scale]
+        if not scale_results:
+            continue
+        best = max(scale_results, key=lambda r: r['total_score'])
+        print(f"{scale}: 最优={best['strategy']} ({best['total_score']:.1f}分)")
+
     return results
 
 
+def ensure_all_maps():
+    """确保所有规模的地图 JSON 存在."""
+    for scale in ["small", "medium", "large", "extra_large"]:
+        if not os.path.exists(f"data/{scale}_map.json"):
+            print(f"  生成缺失地图: {scale}")
+            generate_all_maps()
+            return  # generate_all_maps 一次性全部生成
+
+
 if __name__ == "__main__":
-    run_batch_experiment()
+    difficulty = sys.argv[1] if len(sys.argv) > 1 else "easy"
+    run_batch_experiment(difficulty)

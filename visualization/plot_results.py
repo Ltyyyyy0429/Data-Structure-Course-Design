@@ -23,8 +23,8 @@ from matplotlib import font_manager
 import pandas as pd
 from pandas.errors import EmptyDataError
 
-SCALES = ["small", "medium", "large"]
-STRATEGIES = ["nearest", "largest"]
+SCALES = ["small", "medium", "large", "extra_large"]
+STRATEGIES = ["nearest", "largest", "energy_aware_hybrid"]
 REQUIRED_COLUMNS = [
     "scale",
     "strategy",
@@ -92,6 +92,33 @@ def create_sample_data() -> pd.DataFrame:
             "total_distance": 566.3,
             "charging_times": 15,
         },
+        {
+            "scale": "extra_large",
+            "strategy": "nearest",
+            "total_score": 4200,
+            "completed_tasks": 58,
+            "timeout_tasks": 10,
+            "total_distance": 780.0,
+            "charging_times": 20,
+        },
+        {
+            "scale": "extra_large",
+            "strategy": "largest",
+            "total_score": 4550,
+            "completed_tasks": 54,
+            "timeout_tasks": 12,
+            "total_distance": 840.0,
+            "charging_times": 22,
+        },
+        {
+            "scale": "extra_large",
+            "strategy": "energy_aware_hybrid",
+            "total_score": 3800,
+            "completed_tasks": 48,
+            "timeout_tasks": 6,
+            "total_distance": 720.0,
+            "charging_times": 18,
+        },
     ]
     return pd.DataFrame(rows)
 
@@ -140,15 +167,17 @@ def plot_grouped_bar(df: pd.DataFrame, metric: str, title: str, ylabel: str, fil
     )
 
     x_positions = list(range(len(SCALES)))
-    bar_width = 0.35
-    colors = {"nearest": "#3182ce", "largest": "#dd6b20"}
+    num_strategies = len(STRATEGIES)
+    bar_width = 0.8 / max(1, num_strategies)
+    colors = {"nearest": "#3182ce", "largest": "#dd6b20", "energy_aware_hybrid": "#2ca02c"}
 
     plt.figure(figsize=(8, 5))
     for index, strategy in enumerate(STRATEGIES):
-        offset = (index - 0.5) * bar_width
-        values = pivot[strategy] if strategy in pivot.columns else [0, 0, 0]
+        offset = (index - (num_strategies - 1) / 2) * bar_width
+        values = pivot[strategy] if strategy in pivot.columns else [0] * len(SCALES)
         bar_positions = [x + offset for x in x_positions]
-        plt.bar(bar_positions, values, width=bar_width, label=strategy, color=colors[strategy])
+        plt.bar(bar_positions, values, width=bar_width, label=strategy,
+                color=colors.get(strategy, "#999999"))
 
     plt.title(title)
     plt.xlabel("scale")
