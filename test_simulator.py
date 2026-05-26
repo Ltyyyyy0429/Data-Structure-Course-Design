@@ -1,11 +1,8 @@
-"""测试 Simulator 完整功能 - 整数ID版本"""
-import json
-import tempfile
-import os
+"""测试 Simulator 完整功能 - 整数ID版本（完整修复版）"""
+import random
 from simulator import Simulator
-from simulator.pathfinder_adapter import RealPathfinder
 
-# 使用整数 ID 的测试图（B 格式，供 Simulator 内部使用）
+# 使用整数 ID 的测试图
 test_graph = {
     "nodes": [
         {"id": 1, "x": 0, "y": 0, "type": "depot"},
@@ -25,58 +22,37 @@ test_graph = {
     ]
 }
 
-# B → A 类型映射
-_TYPE_MAP = {"depot": "warehouse", "task_point": "task", "charging_station": "charging"}
-
-
-def _build_pathfinder() -> RealPathfinder:
-    """从 test_graph 构造 A 格式临时 JSON，加载为 RealPathfinder."""
-    a_nodes = []
-    for n in test_graph["nodes"]:
-        a_nodes.append({
-            "id": n["id"], "x": n["x"], "y": n["y"],
-            "type": _TYPE_MAP.get(n["type"], "normal")
-        })
-    a_edges = []
-    for e in test_graph["edges"]:
-        a_edges.append({
-            "from": e["from_node"], "to": e["to_node"], "distance": e["distance"]
-        })
-
-    tmp = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False, encoding='utf-8')
-    json.dump({"nodes": a_nodes, "edges": a_edges}, tmp)
-    tmp.close()
-
-    pf = RealPathfinder(tmp.name)
-    os.unlink(tmp.name)
-    return pf
 
 def run_simulation(strategy, duration=30, dt=1):
+    """运行仿真"""
     print(f"\n{'='*60}")
     print(f"运行仿真 | 策略: {strategy} | 时长: {duration}分钟 | 步长: {dt}分钟")
     print(f"{'='*60}\n")
-
-    pathfinder = _build_pathfinder()
-    sim = Simulator(test_graph, "small", strategy, pathfinder=pathfinder)
     
-    # 添加初始任务（node_id 是整数）
+    # 创建仿真器（不再传入 pathfinder 参数）
+    sim = Simulator(test_graph, "small", strategy)
+    
+    # 添加初始任务
     print("\n[添加初始任务]")
-    sim.add_test_task("t1", 2, 200, 0, 25)
-    sim.add_test_task("t2", 3, 150, 0, 30)
-    sim.add_test_task("t3", 4, 300, 0, 35)
+    sim.add_test_task("t1", 2, 200, 0, 60)
+    sim.add_test_task("t2", 3, 150, 0, 60)
+    sim.add_test_task("t3", 4, 300, 0, 60)
     
     print("\n[初始调度]")
     sim._dispatch_tasks()
     
+    # 显示初始状态
     initial_state = sim.get_state()
     print(f"初始车辆状态:")
     for v in initial_state['vehicles']:
         print(f"  {v['id']}: 位置={v['current_node']}, 状态={v['status']}, 目标={v['target_node']}")
     
+    # 运行仿真
     time_steps = int(duration / dt)
     for step in range(time_steps):
         sim.update(dt)
         
+        # 每5步打印一次状态
         if step % 5 == 0 and step > 0:
             state = sim.get_state()
             print(f"\n[时间 {state['metrics']['current_time']:.1f}分钟]")
@@ -86,10 +62,12 @@ def run_simulation(strategy, duration=30, dt=1):
             print(f"  总里程: {state['metrics']['total_distance']:.1f}km")
             print(f"  充电次数: {state['metrics']['charging_times']}")
             
+            # 打印车辆状态
             for v in state['vehicles']:
                 if v['status'] != 'idle':
                     print(f"    {v['id']}: {v['status']}, 位置={v['current_node']}, 电量={v['battery']}kWh")
     
+    # 最终结果
     final_state = sim.get_state()
     print(f"\n{'='*60}")
     print(f"仿真结束 - {strategy} 策略")
@@ -100,21 +78,25 @@ def run_simulation(strategy, duration=30, dt=1):
     print(f"总行驶距离: {final_state['metrics']['total_distance']:.1f} km")
     print(f"充电次数: {final_state['metrics']['charging_times']}")
     
+    # 打印所有车辆最终状态
     print(f"\n最终车辆状态:")
     for v in final_state['vehicles']:
         print(f"  {v['id']}: 位置={v['current_node']}, 电量={v['battery']}kWh, 载重={v['load']}kg")
     
     return final_state['metrics']
 
+
 if __name__ == "__main__":
     print("新能源物流车队调度仿真测试（整数ID版本）")
     print("="*60)
     
+    # 测试两种策略
     results = {}
     for strategy in ['nearest', 'largest']:
         metrics = run_simulation(strategy, duration=30, dt=1)
         results[strategy] = metrics
     
+    # 对比结果
     print(f"\n{'='*60}")
     print("策略对比结果")
     print(f"{'='*60}")

@@ -1,14 +1,8 @@
-"""批量实验脚本 - 支持多策略 × 多规模 × 多难度"""
-
+"""批量实验脚本 - 使用 A 同学的真实地图数据（增加任务触发充电）"""
 import json
 import csv
 import os
-import sys
-
 from simulator import Simulator
-from simulator.pathfinder_adapter import RealPathfinder
-from core.difficulty import get_difficulty_config
-from core.map_generator import generate_all_maps
 
 
 def get_default_graph():
@@ -34,23 +28,29 @@ def get_default_graph():
 
 
 def load_graph_data(scale: str) -> dict:
-    """加载 A 同学的真实地图数据"""
+    """加载 A 同学的真实地图数据，并转换类型"""
     file_path = f"data/{scale}_map.json"
     if os.path.exists(file_path):
         with open(file_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
             
-            # 转换节点格式
+            type_mapping = {
+                'warehouse': 'depot',
+                'task': 'task_point',
+                'charging': 'charging_station',
+                'normal': 'normal'
+            }
+            
             nodes = []
             for node in data.get("nodes", []):
+                original_type = node.get("type", "normal")
                 nodes.append({
                     "id": node.get("id"),
                     "x": node.get("x"),
                     "y": node.get("y"),
-                    "type": node.get("type", "normal")
+                    "type": type_mapping.get(original_type, original_type)
                 })
             
-            # 转换边格式：from -> from_node, to -> to_node
             edges = []
             for edge in data.get("edges", []):
                 edges.append({
@@ -60,10 +60,7 @@ def load_graph_data(scale: str) -> dict:
                 })
             
             print(f"  加载 {scale} 地图: {len(nodes)} 节点, {len(edges)} 边")
-            return {
-                "nodes": nodes,
-                "edges": edges
-            }
+            return {"nodes": nodes, "edges": edges}
     else:
         print(f"  警告: {file_path} 不存在，使用默认小地图")
         return get_default_graph()
@@ -74,73 +71,57 @@ def get_task_nodes(graph_data: dict) -> list:
     task_nodes = []
     for node in graph_data.get("nodes", []):
         node_type = node.get("type", "")
-        if node_type == "task_point" or node_type == "task":
+        if node_type == "task_point":
             task_nodes.append(node["id"])
     return task_nodes
 
 
-def run_single_experiment(scale: str, strategy: str, duration: int = 180,
-                         difficulty: str = "easy") -> dict:
-    """运行单次实验（默认180分钟）"""
-    print(f"  运行 {scale} / {strategy} / {difficulty} ...")
-
-    # Generate map if needed
-    map_path = f"data/{scale}_map.json"
-    if not os.path.exists(map_path):
-        print(f"    生成缺失的地图: {scale}")
-        generate_all_maps()
-
-    graph_data = load_graph_data(scale)
-    pathfinder = RealPathfinder(map_path)
-    config = get_difficulty_config(scale, difficulty)
-    sim = Simulator(graph_data, scale, strategy, pathfinder=pathfinder, config=config)
+def run_single_experiment(scale: str, strategy: str, duration: int = 240) -> dict:
+    """运行单次实验（240分钟，确保触发充电）"""
+    print(f"  运行 {scale} / {strategy} ...")
     
-    # 获取任务点并添加初始任务
+    graph_data = load_graph_data(scale)
+    sim = Simulator(graph_data, scale, strategy)
+    
     task_nodes = get_task_nodes(graph_data)
     if not task_nodes:
-        task_nodes = [2, 3, 4]  # 备用
+        task_nodes = [2, 3, 4]
     
-    # 添加初始任务（最多3个），截止时间延长到 120-180 分钟
-    for i, node_id in enumerate(task_nodes[:3]):
-        deadline = 120 + i * 30  # 120, 150, 180分钟
-        sim.add_test_task(f"t{i}", node_id, 100 + i * 50, 0, deadline)
+    # 添加更多初始任务（5-6个），确保总里程足够触发充电
+    for i, node_id in enumerate(task_nodes[:6]):
+        weight = 100 + (i % 3) * 50
+        deadline = 180 + i * 20
+        sim.add_test_task(f"t{i}", node_id, weight, 0, deadline)
     
-    # 立即调度
     sim._dispatch_tasks()
     
-    # 运行仿真
-    steps = int(duration / 1)  # dt=1分钟
+    steps = int(duration / 1)
     for step in range(steps):
         sim.update(1)
-        # 每30分钟打印一次进度
         if step > 0 and step % 30 == 0:
             state = sim.get_state()
-            print(f"    进度: {state['metrics']['current_time']}分钟, 得分={state['metrics']['total_score']:.1f}, 完成任务={state['metrics']['completed_tasks']}")
+            print(f"    进度: {state['metrics']['current_time']}分钟, 得分={state['metrics']['total_score']:.1f}, 完成任务={state['metrics']['completed_tasks']}, 充电={state['metrics']['charging_times']}")
     
     state = sim.get_state()
     return state['metrics']
 
 
-def run_batch_experiment(difficulty: str = "easy"):
+def run_batch_experiment():
     """运行批量实验"""
-    scales = ["small", "medium", "large", "extra_large"]
-    strategies = ["nearest", "largest", "energy_aware_hybrid"]
+    scales = ["small", "medium", "large"]
+    strategies = ["nearest", "largest"]
     results = []
-
+    
     print("=" * 60)
-    print("批量实验开始")
-    print(f"仿真时长: 180分钟 (3小时) | 难度: {difficulty}")
-    print(f"规模: {scales} | 策略: {strategies}")
+    print("批量实验开始（使用 A 同学真实地图）")
+    print("仿真时长: 240分钟 (4小时)")
+    print("电池: 100kWh, 能耗: 1.0kWh/km, 续航: 100km")
     print("=" * 60)
-
-    # Ensure all maps exist
-    ensure_all_maps()
-
+    
     for scale in scales:
         for strategy in strategies:
             try:
-                metrics = run_single_experiment(scale, strategy, duration=180,
-                                                difficulty=difficulty)
+                metrics = run_single_experiment(scale, strategy, duration=240)
                 results.append({
                     "scale": scale,
                     "strategy": strategy,
@@ -152,55 +133,26 @@ def run_batch_experiment(difficulty: str = "easy"):
                 })
             except Exception as e:
                 print(f"  错误: {scale}/{strategy} - {e}")
-                import traceback
-                traceback.print_exc()
-
-    # 保存结果到 CSV
+    
     os.makedirs("results", exist_ok=True)
-    csv_path = f'results/experiment_results_{difficulty}.csv'
-    with open(csv_path, 'w', newline='', encoding='utf-8') as f:
-        fieldnames = ["scale", "strategy", "total_score", "completed_tasks",
+    with open('results/experiment_results.csv', 'w', newline='', encoding='utf-8') as f:
+        fieldnames = ["scale", "strategy", "total_score", "completed_tasks", 
                       "timeout_tasks", "total_distance", "charging_times"]
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(results)
-
+    
     print("\n" + "=" * 60)
-    print(f"实验结果（{difficulty.upper()} 难度，180分钟仿真）")
+    print("实验结果")
     print("=" * 60)
-    header = f"{'规模':<12} {'策略':<20} {'得分':<10} {'完成任务':<10} {'超时':<8} {'总里程':<10} {'充电':<6}"
-    print(header)
-    print("-" * len(header))
+    print(f"{'规模':<10} {'策略':<12} {'得分':<10} {'完成任务':<10} {'总里程':<10} {'充电次数':<8}")
+    print("-" * 65)
     for r in results:
-        print(f"{r['scale']:<12} {r['strategy']:<20} {r['total_score']:<10.1f} "
-              f"{r['completed_tasks']:<10} {r['timeout_tasks']:<8} "
-              f"{r['total_distance']:<10.1f} {r['charging_times']:<6}")
-
-    print(f"\n结果已保存到: {csv_path}")
-
-    # 输出总结
-    print("\n" + "=" * 60)
-    print("策略对比总结")
-    print("=" * 60)
-    for scale in scales:
-        scale_results = [r for r in results if r['scale'] == scale]
-        if not scale_results:
-            continue
-        best = max(scale_results, key=lambda r: r['total_score'])
-        print(f"{scale}: 最优={best['strategy']} ({best['total_score']:.1f}分)")
-
+        print(f"{r['scale']:<10} {r['strategy']:<12} {r['total_score']:<10.1f} {r['completed_tasks']:<10} {r['total_distance']:<10.1f} {r['charging_times']:<8}")
+    
+    print(f"\n结果已保存到: results/experiment_results.csv")
     return results
 
 
-def ensure_all_maps():
-    """确保所有规模的地图 JSON 存在."""
-    for scale in ["small", "medium", "large", "extra_large"]:
-        if not os.path.exists(f"data/{scale}_map.json"):
-            print(f"  生成缺失地图: {scale}")
-            generate_all_maps()
-            return  # generate_all_maps 一次性全部生成
-
-
 if __name__ == "__main__":
-    difficulty = sys.argv[1] if len(sys.argv) > 1 else "easy"
-    run_batch_experiment(difficulty)
+    run_batch_experiment()

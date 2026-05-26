@@ -1,6 +1,6 @@
 """数据类定义 - 统一整数ID版本（与UI接口严格对齐）"""
 from dataclasses import dataclass
-from typing import List, Literal
+from typing import List, Literal, Optional
 from enum import Enum
 
 
@@ -15,7 +15,7 @@ class TaskStatus(Enum):
     """任务状态枚举"""
     WAITING = "waiting"         # 未分配
     ASSIGNED = "assigned"       # 已分配未完成
-    COMPLETED = "completed"     # 已完成
+    COMPLETED = "completed"     # 已完成  # 修复：COMPLETed → COMPLETED
     TIMEOUT = "timeout"         # 超时
 
 
@@ -46,6 +46,13 @@ class Vehicle:
     status: VehicleStatus
     target_node: int           # 目标节点ID（0表示无目标）
     path: List[int]            # 剩余路径节点ID列表
+
+    # 扩展字段
+    current_task_id: Optional[str] = None    # 当前执行任务ID
+    saved_task_id: Optional[str] = None      # 中断暂存任务ID
+    charging_target: Optional[int] = None    # 目标充电站
+    is_going_to_charge: bool = False         # 前往充电站标记
+    is_in_charge_queue: bool = False         # 充电站排队标记
 
 
 @dataclass
