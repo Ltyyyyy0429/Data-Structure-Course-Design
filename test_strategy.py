@@ -2,21 +2,21 @@ import json
 from strategy import Dispatcher
 
 # ==========================================
-# 1. 伪造 A 同学的地图模块 (Mock Graph)
+# 1. 伪造 RealPathfinder (Mock Pathfinder)
 # ==========================================
-class MockCityGraph:
-    def shortest_path(self, start_node, end_node):
+class MockRealPathfinder:
+    def find_path_and_distance(self, start_node, end_node):
         # 节点 0: 小车位置 | 1: 近任务 | 2: 远任务 | 3: 近充电站 | 4: 远充电站
-        distances = {
-            (0, 1): 10,   # 小车到近任务：距离 10
-            (0, 2): 100,  # 小车到远任务：距离 100
-            (1, 3): 5,    # 近任务到近充电站：距离 5
-            (2, 4): 5,    # 远任务到远充电站：距离 5
+        routes = {
+            (0, 1): ([0, 1], 10),    # 小车到近任务：距离 10
+            (0, 2): ([0, 2], 100),   # 小车到远任务：距离 100
+            (1, 3): ([1, 3], 5),     # 近任务到近充电站：距离 5
+            (2, 4): ([2, 4], 5),     # 远任务到远充电站：距离 5
         }
-        dist = distances.get((start_node, end_node)) or distances.get((end_node, start_node))
-        if dist is not None:
-            return [], dist 
-        return [], 999 
+        result = routes.get((start_node, end_node)) or routes.get((end_node, start_node))
+        if result is not None:
+            return result
+        return ([start_node, end_node], 999) 
 
 # ==========================================
 # 2. 伪造 B 同学的状态数据字典 (Mock State)
@@ -31,7 +31,7 @@ def create_mock_state(battery_level, far_charger_queue=0):
             {'id': 'task_near_light', 'status': 'waiting', 'node_id': 1, 'weight': 10, 'deadline': 1000},
             {'id': 'task_far_heavy', 'status': 'waiting', 'node_id': 2, 'weight': 100, 'deadline': 1000}
         ],
-        'chargers': [
+        'charging_stations': [
             {'node_id': 3, 'queue_length': 0},                 # 靠近 task_near_light 的充电站
             {'node_id': 4, 'queue_length': far_charger_queue}  # 靠近 task_far_heavy 的充电站
         ]
@@ -41,9 +41,9 @@ def create_mock_state(battery_level, far_charger_queue=0):
 # 3. 运行测试用例
 # ==========================================
 def run_tests():
-    mock_graph = MockCityGraph()
+    mock_pathfinder = MockRealPathfinder()
     # 实例化带有假地图的调度器，启用新策略
-    dispatcher = Dispatcher(city_graph=mock_graph, strategy_name="energy_aware_hybrid")
+    dispatcher = Dispatcher(pathfinder=mock_pathfinder, strategy_name="energy_aware_hybrid")
     
     print("=== 开始测试能量感知调度算法 ===\n")
     

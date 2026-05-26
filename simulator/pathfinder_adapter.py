@@ -24,12 +24,17 @@ class RealPathfinder:
         self.map_file = self._resolve_map_file(map_file)
         self.graph = CityGraph.from_json(self.map_file)
 
-    def find_path(self, start_node: Any, end_node: Any) -> Tuple[List[int], float]:
-        """Return shortest path and distance using CityGraph.shortest_path()."""
+    def find_path_and_distance(self, start_node: Any, end_node: Any) -> Tuple[List[int], float]:
+        """规范寻路入口：返回 (完整节点序列, 距离)，异常直接抛出."""
 
         start_id = self._normalize_node_id(start_node)
         end_id = self._normalize_node_id(end_node)
         return self.graph.shortest_path(start_id, end_id)
+
+    def find_path(self, start_node: Any, end_node: Any) -> Tuple[List[int], float]:
+        """Return shortest path and distance using CityGraph.shortest_path()."""
+
+        return self.find_path_and_distance(start_node, end_node)
 
     def get_shortest_path(self, start_node: Any, end_node: Any) -> List[int]:
         """Compatibility method for B MockPathfinder."""

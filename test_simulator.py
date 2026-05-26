@@ -1,8 +1,11 @@
 """测试 Simulator 完整功能 - 整数ID版本"""
-import random
+import json
+import tempfile
+import os
 from simulator import Simulator
+from simulator.pathfinder_adapter import RealPathfinder
 
-# 使用整数 ID 的测试图
+# 使用整数 ID 的测试图（B 格式，供 Simulator 内部使用）
 test_graph = {
     "nodes": [
         {"id": 1, "x": 0, "y": 0, "type": "depot"},
@@ -22,12 +25,39 @@ test_graph = {
     ]
 }
 
+# B → A 类型映射
+_TYPE_MAP = {"depot": "warehouse", "task_point": "task", "charging_station": "charging"}
+
+
+def _build_pathfinder() -> RealPathfinder:
+    """从 test_graph 构造 A 格式临时 JSON，加载为 RealPathfinder."""
+    a_nodes = []
+    for n in test_graph["nodes"]:
+        a_nodes.append({
+            "id": n["id"], "x": n["x"], "y": n["y"],
+            "type": _TYPE_MAP.get(n["type"], "normal")
+        })
+    a_edges = []
+    for e in test_graph["edges"]:
+        a_edges.append({
+            "from": e["from_node"], "to": e["to_node"], "distance": e["distance"]
+        })
+
+    tmp = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False, encoding='utf-8')
+    json.dump({"nodes": a_nodes, "edges": a_edges}, tmp)
+    tmp.close()
+
+    pf = RealPathfinder(tmp.name)
+    os.unlink(tmp.name)
+    return pf
+
 def run_simulation(strategy, duration=30, dt=1):
     print(f"\n{'='*60}")
     print(f"运行仿真 | 策略: {strategy} | 时长: {duration}分钟 | 步长: {dt}分钟")
     print(f"{'='*60}\n")
-    
-    sim = Simulator(test_graph, "small", strategy)
+
+    pathfinder = _build_pathfinder()
+    sim = Simulator(test_graph, "small", strategy, pathfinder=pathfinder)
     
     # 添加初始任务（node_id 是整数）
     print("\n[添加初始任务]")
