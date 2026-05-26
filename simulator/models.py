@@ -1,4 +1,4 @@
-"""数据类定义 - 与UI接口严格对齐"""
+"""数据类定义 - 统一整数ID版本（与UI接口严格对齐）"""
 from dataclasses import dataclass
 from typing import List, Literal
 from enum import Enum
@@ -21,8 +21,8 @@ class TaskStatus(Enum):
 
 @dataclass
 class Node:
-    """道路节点"""
-    id: str
+    """道路节点 - 使用整数ID"""
+    id: int
     x: float
     y: float
     type: Literal["depot", "task_point", "charging_station"]
@@ -30,29 +30,29 @@ class Node:
 
 @dataclass
 class Edge:
-    """道路边"""
-    from_node: str
-    to_node: str
+    """道路边 - 使用整数ID"""
+    from_node: int
+    to_node: int
     distance: float  # 单位：km
 
 
 @dataclass
 class Vehicle:
-    """车辆"""
+    """车辆 - 节点ID使用整数"""
     id: str
-    current_node: str          # 当前所在节点ID
+    current_node: int          # 当前所在节点ID
     battery: float             # 当前电量 (kWh)
     load: float                # 当前载重 (kg)
     status: VehicleStatus
-    target_node: str           # 目标节点ID（无则为空字符串）
-    path: List[str]            # 剩余路径节点ID列表
+    target_node: int           # 目标节点ID（0表示无目标）
+    path: List[int]            # 剩余路径节点ID列表
 
 
 @dataclass
 class Task:
-    """任务"""
+    """任务 - 节点ID使用整数"""
     id: str
-    node_id: str               # 任务所在节点
+    node_id: int               # 任务所在节点
     weight: float              # 货物重量 (kg)
     release_time: float        # 产生时间（仿真时间）
     deadline: float            # 截止时间
@@ -61,8 +61,8 @@ class Task:
 
 @dataclass
 class ChargingStation:
-    """充电站"""
-    node_id: str
+    """充电站 - 节点ID使用整数"""
+    node_id: int
     queue_length: int          # 排队车辆数
     charging_count: int        # 充电中车辆数
 
