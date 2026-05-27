@@ -23,6 +23,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from simulator import Simulator
 from simulator.pathfinder_adapter import RealPathfinder
 from core.difficulty import get_difficulty_config
+from strategy import Dispatcher
 
 try:
     from state_adapter import load_state_from_simulator
@@ -34,16 +35,23 @@ except ImportError:
 
 FPS = 60
 SIM_MINUTES_PER_REAL_SECOND = 8.0
-LOW_BATTERY_DEMO = True
+LOW_BATTERY_DEMO = False
 LOW_BATTERY_VALUE = 15.0
 UI_DIFFICULTY = "easy"
 UI_SCALE = "small"
+UI_STRATEGY = "nearest"
 PRESENTATION_FLEET_BY_SCALE = True
 SCALE_TO_MAP_FILE = {
     "small": "data/small_map.json",
     "medium": "data/medium_map.json",
     "large": "data/large_map.json",
     "extra_large": "data/extra_large_map.json",
+}
+SUPPORTED_STRATEGIES = {
+    "nearest",
+    "largest",
+    "energy_aware_hybrid",
+    "genetic_algorithm",
 }
 SCALE_COUNT_FIELD = {
     "small": "count_small",
@@ -173,12 +181,20 @@ def create_simulator(strategy: str = "nearest", difficulty: str = "easy", scale:
     pathfinder = RealPathfinder(map_file)
     config = get_difficulty_config(scale, difficulty)
     apply_presentation_fleet_size(config, scale, difficulty)
+    graph_data = build_b_graph_from_pathfinder(pathfinder)
     simulator = Simulator(
-        graph_data=build_b_graph_from_pathfinder(pathfinder),
+        graph_data=graph_data,
         scale=scale,
         strategy=strategy,
-        pathfinder=pathfinder,
         config=config,
+    )
+    # Keep B's converted graph/state, but use A's RealPathfinder for routing.
+    simulator.pathfinder = pathfinder
+    simulator._dispatcher = Dispatcher(
+        pathfinder,
+        strategy,
+        consume_rate=simulator.energy_per_km,
+        load_capacity=simulator.load_capacity,
     )
 
     add_ui_demo_tasks(simulator, pathfinder)
@@ -244,11 +260,23 @@ def reset_simulator(strategy: str, difficulty: str = "easy", scale: str = "small
     return create_simulator(strategy=strategy, difficulty=difficulty, scale=scale)
 
 
-def parse_cli_args(argv: list[str]) -> tuple[str, str]:
-    """Parse --scale and --difficulty without adding dependencies."""
+def normalize_strategy(strategy: str) -> str:
+    """Return a supported strategy, falling back to nearest if needed."""
+
+    strategy = str(strategy or "nearest")
+    if strategy in SUPPORTED_STRATEGIES:
+        return strategy
+    print(f"[Simulator UI] Unknown strategy '{strategy}', fallback to nearest.")
+    return "nearest"
+
+
+def parse_cli_args(argv: list[str]) -> tuple[str, str, str, bool]:
+    """Parse simple command-line options without adding dependencies."""
 
     scale = UI_SCALE
     difficulty = UI_DIFFICULTY
+    strategy = UI_STRATEGY
+    low_battery_demo = LOW_BATTERY_DEMO
     index = 1
     while index < len(argv):
         arg = argv[index]
@@ -258,10 +286,16 @@ def parse_cli_args(argv: list[str]) -> tuple[str, str]:
         elif arg == "--difficulty" and index + 1 < len(argv):
             difficulty = argv[index + 1]
             index += 2
+        elif arg == "--strategy" and index + 1 < len(argv):
+            strategy = normalize_strategy(argv[index + 1])
+            index += 2
+        elif arg == "--demo-low-battery":
+            low_battery_demo = True
+            index += 1
         else:
             print(f"[Simulator UI] Ignored argument: {arg}")
             index += 1
-    return scale, difficulty
+    return scale, difficulty, strategy, low_battery_demo
 
 
 def main() -> None:
@@ -273,7 +307,7 @@ def main() -> None:
 
     current_scale = UI_SCALE
     current_difficulty = UI_DIFFICULTY
-    strategy = "nearest"
+    strategy = UI_STRATEGY
     simulator = create_simulator(strategy=strategy, difficulty=current_difficulty, scale=current_scale)
     paused = False
     running = True
@@ -359,5 +393,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    UI_SCALE, UI_DIFFICULTY = parse_cli_args(sys.argv)
+    UI_SCALE, UI_DIFFICULTY, UI_STRATEGY, LOW_BATTERY_DEMO = parse_cli_args(sys.argv)
     main()
