@@ -177,6 +177,10 @@ class Simulator:
 
     def _queue_for_charging(self, vehicle: Vehicle, station: ChargingStation) -> None:
         """Place a vehicle in a charging queue once, avoiding duplicate entries."""
+        if vehicle.id in self.queued_vehicle_ids and vehicle.status != VehicleStatus.WAITING_FOR_CHARGE:
+            self.queued_vehicle_ids.discard(vehicle.id)
+            if station.queue_length > 0:
+                station.queue_length -= 1
         if vehicle.id not in self.queued_vehicle_ids:
             station.queue_length += 1
             self.queued_vehicle_ids.add(vehicle.id)
@@ -638,6 +642,5 @@ class Simulator:
             id=task_id, node_id=node_id, weight=weight, release_time=release_time,
             deadline=deadline, status=TaskStatus.WAITING
         )
-        if task_id.startswith("t") and task_id[1:].isdigit():
-            self.next_task_id = max(self.next_task_id, int(task_id[1:]) + 1)
+        self.next_task_id = max(self.next_task_id, len(self.tasks) + 1000)
         print(f"[Simulator] 添加测试任务: {task_id}")

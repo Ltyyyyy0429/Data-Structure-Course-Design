@@ -43,12 +43,14 @@ class Edge:
     from_node: int
     to_node: int
     distance: float
+    bidirectional: bool = True
 
     def to_json_dict(self) -> Dict:
         return {
             "from": self.from_node,
             "to": self.to_node,
             "distance": round(self.distance, 2),
+            "bidirectional": self.bidirectional,
         }
 
 
@@ -99,7 +101,7 @@ class CityGraph:
         if bidirectional:
             self._add_neighbor(to_node, from_node, distance)
 
-        self.edges.append(Edge(from_node=from_node, to_node=to_node, distance=distance))
+        self.edges.append(Edge(from_node=from_node, to_node=to_node, distance=distance, bidirectional=bidirectional))
 
     def get_node(self, node_id: int) -> Node:
         """Return a node by id."""
@@ -243,7 +245,7 @@ class CityGraph:
                 int(from_node),
                 int(to_node),
                 float(edge_data["distance"]),
-                bidirectional=True,
+                bidirectional=edge_data.get("bidirectional", True),
             )
 
         return graph
