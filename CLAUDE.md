@@ -1,3 +1,7 @@
+---
+additional_data:
+  - progress_A.md
+---
 # CLAUDE.md
 
 ## 项目概述 (Project Overview)
@@ -211,13 +215,23 @@ sim = Simulator(graph_data, scale, strategy, pathfinder=pathfinder, config=confi
 
 `DifficultyConfig` 包含四个子配置：
 - `MapConfig` — 节点数、充电站数、拓扑模式(grid/cluster)、瓶颈比例、单向边比例、充电站分布(uniform/clustered/scarce)
-- `VehicleConfig` — 车辆数(按规模)、电池容量、能耗、速度、载重、低电量阈值
+- `VehicleConfig` — 车辆数(按规模)、电池容量、能耗、速度、载重、低电量阈值(比例)、初始电量范围(比例)
 - `TaskConfig` — 生成概率、截止时间范围、重量范围、burst 概率
 - `ChargingConfig` — 充电速率、每站端口数
 
 **向后兼容**：`Simulator.__init__` 的 `config` 参数默认为 `None`，此时使用原类常量（= EASY 行为）。所有现有测试和 Demo 无需传 config 即可运行。
 
 **Dispatcher 新增 `consume_rate` 参数**：`Dispatcher.__init__` 新增 `consume_rate` 参数（默认 0.5）。Simulator 构造 Dispatcher 时会传入实际 `energy_per_km` 值，确保策略层的能量硬门槛与实际仿真能耗一致。
+
+**VehicleConfig 低电量阈值改为比例制**：`low_battery_threshold_kwh` 从直接存储绝对 kWh 值改为 `low_battery_threshold_ratio`（比例），通过 `low_battery_threshold_kwh()` 方法计算 `capacity × ratio`。新增 `initial_battery_min_ratio` / `initial_battery_max_ratio` 和 `initial_battery_range_kwh()` 方法控制车辆初始电量范围。
+
+**载重约束校验**：`strategy.py` 的三个调度策略均包含共享的载重可行性检查（车辆剩余载重 ≥ 任务重量），Simulator 层面增加了超载任务分配的二级防御。
+
+**评分公式含路径距离惩罚**：任务完成评分公式为 `score = 100 + time_early * 2 - task_distance * 0.3`。`task_distance` 在 `_apply_dispatch` 分配任务时存入 `task_travel_distance[task.id]` 字典（通过 Dijkstra 计算的距离），完成时取出使用。超时任务会清理对应条目。详见 `simulator/simulator.py:_check_tasks_completion`。
+
+**Simulator 层能量预检**：`Simulator._apply_dispatch()` 在分配任务前调用 `_can_reach_and_return(vehicle, task_node_id)`，检查车辆电量是否足够到达任务节点并安全返回最近的充电站或仓库。不修改 `strategy.py`，nearest/largest 作为 baseline 策略照常输出 action，Simulator 层统一拦截电量不可行的分配。需电量 ≥ `(d1 + recovery_dist) × energy_per_km`，其中 `recovery_dist = min(到最近充电站的距离, 到仓库的距离)`。
+
+**`_move_vehicles` 低电量检测改为可达性检查**：移动中的车辆不再仅比较 `battery < low_battery_threshold` 绝对值，而是计算 `remaining_to_target + charger_dist` × `energy_per_km` 作为所需电量，仅在电量不足以到达目标+安全撤退时才触发低电量处理。`_check_low_battery`（空闲车辆）保持原绝对阈值检查。
 
 **TaskGenerator 已实现**：`simulator/task_generator.py` 不再是死代码。Simulator 在提供 `config` 时会构造 `TaskGenerator` 实例并委托任务生成；无 config 时使用原有简单随机逻辑。
 

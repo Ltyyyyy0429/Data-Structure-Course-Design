@@ -246,3 +246,57 @@ python3 test_simulator.py
 - `ESC`：退出
 
 注意：当前 `simulator_app.py` 已使用 A 的 `RealPathfinder` 进行路径计算，调度器已接入 C 的 `Dispatcher`（支持 nearest / largest / energy_aware_hybrid 三种策略）。支持通过 `--difficulty easy|medium|hard` 切换难度配置。
+
+## 车辆电池与难度参数说明
+
+车辆电池参数由 `core/difficulty.py` 统一管理，B 的 `Simulator` 会读取对应难度配置。参数设计目标是让补能压力随难度自然增加，而不是依赖手动把车辆放进充电站。
+
+| 难度 | 电池容量 | 单位距离耗电 | 低电量阈值 | 初始电量范围 | 充电速度 |
+| --- | --- | --- | --- | --- | --- |
+| easy | 120 kWh | 0.35 kWh/km | 20% = 24 kWh | 90% - 100% | 50 kWh/h |
+| medium | 100 kWh | 0.60 kWh/km | 30% = 30 kWh | 70% - 100% | 45 kWh/h |
+| hard | 80 kWh | 0.90 kWh/km | 40% = 32 kWh | 45% - 80% | 35 kWh/h |
+
+含义：
+
+- easy：续航较宽松，通常只有长距离或长时间实验才会触发充电。
+- medium：续航压力适中，车辆更容易在中后期触发补能。
+- hard：初始电量较低、能耗较高、充电速度较慢，更容易出现充电和排队压力。
+
+## 评分公式与能量预检机制
+
+### 任务完成评分
+
+任务完成后得分由两项组成：时间奖励 + 路径惩罚。
+
+```
+score = 100 + time_early × 2 - task_distance × 0.3
+```
+
+其中：
+- `time_early = max(0, deadline - current_time)` — 越早完成得分越高
+- `task_distance` — 从车辆分配点到任务节点的最短路径距离（Dijkstra 计算），在分配时记录
+- 超时未完成的任务（含 ASSIGNED 状态）扣 100 分
+
+### Simulator 层能量预检
+
+`Simulator._apply_dispatch()` 在分配任务前进行物理可行性检查（不依赖策略层）：
+
+1. **载重检查**：`vehicle.load + task.weight ≤ load_capacity`
+2. **能量预检**（`_can_reach_and_return`）：车辆电量必须足够到达任务节点并安全返回最近的充电站或仓库
+
+```
+required_energy ≥ (d1 + recovery_dist) × energy_per_km
+d1 = distance(vehicle.current → task)
+recovery_dist = min(distance(task → nearest_charger), distance(task → depot))
+```
+
+策略层（`strategy.py`）不需要任何修改，nearest/largest 作为 baseline 照常输出 action，Simulator 统一拦截不可行的分配。
+
+### 移动中低电量检测
+
+车辆在移动过程中不再仅比较绝对阈值 `battery < low_battery_threshold`，而是进行可达性判断：
+
+- 计算剩余路径距离 + 从终点到最近充电站的距离
+- 仅在电量不足到达目标且无法安全撤退时才触发低电量处理
+- 空闲车辆（`_check_low_battery`）保持原绝对阈值检查

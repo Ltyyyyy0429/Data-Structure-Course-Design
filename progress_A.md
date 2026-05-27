@@ -271,14 +271,15 @@ dispatcher = Dispatcher(pathfinder, strategy_name="nearest")
 6. ✅ **批量实验增强**：`batch_experiment.py` 加入 `energy_aware_hybrid` 策略和 `extra_large` 规模，支持 `python batch_experiment.py [difficulty]` 命令行参数
 7. ✅ **UI 增强**：`ui/simulator_app.py` 按键 `3` 切换 `energy_aware_hybrid`，支持 `--difficulty` 参数；`visualization/plot_results.py` 更新 SCALES/STRATEGIES 常量
 
-### 难度参数对照
+### 难度参数对照（2026-05-27 队友重新调参后更新）
 
-| 参数 | EASY（=原值） | MEDIUM | HARD |
-|------|-------------|--------|------|
-| 电池容量 | 500 kWh | 300 kWh | 200 kWh |
-| 能耗 | 0.3 kWh/km | 0.5 kWh/km | 0.7 kWh/km |
-| 低电量阈值 | 80 kWh | 60 kWh | 45 kWh |
-| 充电速率 | 100 kWh/h | 75 kWh/h | 50 kWh/h |
+| 参数 | EASY | MEDIUM | HARD |
+|------|-----|--------|------|
+| 电池容量 | 120 kWh | 100 kWh | 80 kWh |
+| 能耗 | 0.35 kWh/km | 0.60 kWh/km | 0.90 kWh/km |
+| 低电量阈值(比例) | 20% (24 kWh) | 30% (30 kWh) | 40% (32 kWh) |
+| 初始电量范围 | 90%-100% | 70%-100% | 45%-80% |
+| 充电速率 | 50 kWh/h | 45 kWh/h | 35 kWh/h |
 | 充电端口 | 2 | 2 | 1 |
 | 车辆数(小/中/大/特大) | 3/3/3/3 | 3/3/3/3 | 2/3/4/5 |
 | 任务生成概率 | 30% | 50% | 70% |
@@ -312,3 +313,99 @@ dispatcher = Dispatcher(pathfinder, strategy_name="nearest")
 - `test_integration.py` — nearest 策略集成测试通过
 - `test_simulator.py` — nearest vs largest 全流程对比通过
 - `demo_simulator_real_pathfinder.py --difficulty hard` — HARD 难度端到端正常（2 车/200 kWh/0.7 kWh/km）
+
+---
+
+## 九、队友合并至 main 的改动分析（2026-05-27）
+
+### 背景
+
+队友 yyb 在 commit `f2a71b8` 中合入了以下修改：
+- 删除 `batch_experiment.py` 中的 `apply_hard_charging_pressure()` 硬编码充电压力注入
+- 在 `strategy.py` 的三个策略中增加共享的载重可行性检查
+- 在 `Simulator` 中增加超载任务分配的二级防御
+- 更新 `core/difficulty.py` 追踪实际充电指标
+- 更新 README 约束说明
+
+### 对 A 模块（core/difficulty.py）的具体改动
+
+#### VehicleConfig 参数重构
+
+**低电量阈值：从绝对值改为比例制**
+
+原来 `VehicleConfig` 直接存储 `low_battery_threshold_kwh: float = 80.0`（绝对 kWh 值），现在改为：
+
+```python
+low_battery_threshold_ratio: float = 0.30   # 比例值（占电池容量的百分比）
+```
+
+并新增**计算方法** `low_battery_threshold_kwh()` → `battery_capacity_kwh * ratio`，供调用方获取实际的 kWh 阈值。这样做的好处是：调整电池容量时低电量阈值自动跟随缩放，不需要手动重新计算。
+
+**新增初始电量范围控制**
+
+新增两个比例字段和对应的计算方法：
+
+```python
+initial_battery_min_ratio: float = 0.90   # 初始电量的下限比例
+initial_battery_max_ratio: float = 1.00   # 初始电量的上限比例
+
+def initial_battery_range_kwh(self) -> Tuple[float, float]:
+    """返回 (min_kwh, max_kwh)，供 Simulator 随机初始化车辆电量"""
+```
+
+**Imports 变化**：新增 `Tuple` 导入，用于 `initial_battery_range_kwh()` 的返回类型标注。
+
+#### 各难度档位参数全面重调
+
+| 参数 | EASY（旧→新） | MEDIUM（旧→新） | HARD（旧→新） |
+|------|-------------|---------------|-------------|
+| 电池容量 | 500→120 kWh | 300→100 kWh | 200→80 kWh |
+| 能耗 | 0.3→0.35 kWh/km | 0.5→0.60 kWh/km | 0.7→0.90 kWh/km |
+| 低电量阈值 | 80→24 kWh (20%) | 60→30 kWh (30%) | 45→32 kWh (40%) |
+| 充电速率 | 100→50 kWh/h | 75→45 kWh/h | 50→35 kWh/h |
+
+**调参思路**：电池容量大幅缩减（原 500 kWh 续航 1666 km 过于宽松），能耗对应提高，充电速率减半。续航压力从 "几乎不需要充电" 变为 "中后期必然触发补能"。低电量阈值改用比例制后，HARD 难度下实际阈值（32 kWh）虽然绝对值低于原 45 kWh，但占容量比例从 22.5% 提高到 40%，触发充电更频繁。
+
+### 改动影响评估
+
+这些改动全部限定在 `VehicleConfig` 和 `ChargingConfig` 的参数值层面，**不影响 `CityGraph` 图结构、Dijkstra 算法、`map_generator.py` 地图生成逻辑**。A 模块的核心能力（图建模 + 最短路径）未受任何影响。
+
+`import Tuple` 的新增是向后兼容的，不影响现有调用方。
+
+---
+
+## 九、P0 仿真核心修复（2026-05-27 完成）
+
+### 背景
+
+根据 plan2.md 的 P0 阶段要求，A 成员负责三项 Simulator 层修复：评分加入路径距离、能量预检、移动可达性判断。三项修复均限定在 `simulator/simulator.py`，不修改 `strategy.py`。
+
+### 改动清单
+
+| # | 任务 | 位置 | 说明 |
+|---|------|------|------|
+| A-1 | 评分公式加入路径距离 | `_check_tasks_completion`, `_apply_dispatch`, `__init__` | 新增 `task_travel_distance` 字典在 dispatch 时存 Dijkstra 距离，完成时 `score = 100 + time_early*2 - task_dist*0.3`，超时时清理 |
+| A-2 | Simulator 层能量预检 | `_apply_dispatch`, 新增 `_can_reach_and_return` | 在载重检查后、分配前拦截电量不可达任务：`battery ≥ (d1 + recovery_dist) × energy_per_km`，缓存 `depot_ids` 优化 |
+| A-3 | 移动低电量改为可达性 | `_move_vehicles` | 替换 `battery < low_battery_threshold` 为 `battery < (remaining_to_target + charger_dist) × energy_per_km`，空闲车辆保持原阈值 |
+
+### 设计决策
+
+- **A-1 未使用 `vehicle_accumulated_distance`**：该字段在充电中断时归零（`_move_vehicles` L308/L315、`_check_low_battery` L424、`_resume_saved_task` L446），无法反映完整任务距离。改用 `task_travel_distance` 字典在分配时一次性记录，不受途中充电影响。
+- **A-2 depot_ids 缓存**：在 `__init__` 中一次遍历 `self.depot_ids`，避免 `_can_reach_and_return` 每次调用都遍历所有节点。
+- **A-3 无充电站回退**：当地图无充电站时（`nearest_cs is None`），`required_energy = remaining_to_target × energy_per_km × 1.5` 作为保守估计。
+
+### 验证结果
+
+- `test_strategy.py` — 4/4 场景通过
+- `test_integration.py` — 通过
+- `test_simulator.py` — nearest 363.8 分 / largest 363.8 分，无崩溃
+
+### 涉及文件
+
+| 文件 | 改动类型 |
+|------|----------|
+| [simulator/simulator.py](simulator/simulator.py) | 修改：3 处方法修改 + 1 个新方法 + 1 个新属性 |
+| [CLAUDE.md](CLAUDE.md) | 文档：新增三个 Gotchas |
+| [README.md](README.md) | 文档：新增评分公式与能量预检说明 |
+| [plan2.md](plan2.md) | 进度：标记 A-1/A-2/A-3 已完成 |
+| [progress_A.md](progress_A.md) | 进度：新增本节 |
