@@ -187,19 +187,19 @@ def _task_config_for(difficulty: DifficultyPreset) -> TaskConfig:
         return TaskConfig()
     if difficulty == DifficultyPreset.MEDIUM:
         return TaskConfig(
-            spawn_probability=0.50,
-            deadline_min=45.0,
+            spawn_probability=0.35,
+            deadline_min=65.0,
             deadline_max=90.0,
             weight_min_kg=80.0,
-            burst_probability=0.10,
+            burst_probability=0.08,
         )
     # HARD
     return TaskConfig(
-        spawn_probability=0.70,
-        deadline_min=25.0,
+        spawn_probability=0.40,
+        deadline_min=45.0,
         deadline_max=60.0,
         weight_min_kg=100.0,
-        burst_probability=0.20,
+        burst_probability=0.12,
         burst_count_min=2,
         burst_count_max=4,
     )
