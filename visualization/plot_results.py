@@ -26,8 +26,9 @@ import pandas as pd
 from pandas.errors import EmptyDataError
 
 SCALES = ["small", "medium", "large", "extra_large"]
-STRATEGIES = ["nearest", "largest", "energy_aware_hybrid"]
+STRATEGIES = ["nearest", "largest", "energy_aware_hybrid", "genetic_algorithm"]
 DIFFICULTIES = ["easy", "medium", "hard"]
+EXPECTED_ROWS = len(SCALES) * len(DIFFICULTIES) * len(STRATEGIES)
 REQUIRED_COLUMNS = [
     "difficulty",
     "scale",
@@ -45,46 +46,61 @@ REQUIRED_COLUMNS = [
 ]
 
 
-def create_sample_data() -> pd.DataFrame:
-    rows = []
-    for difficulty_index, difficulty in enumerate(DIFFICULTIES):
-        for scale_index, scale in enumerate(SCALES):
-            for strategy_index, strategy in enumerate(STRATEGIES):
-                base = 600 + difficulty_index * 180 + scale_index * 420
-                rows.append(
-                    {
-                        "difficulty": difficulty,
-                        "scale": scale,
-                        "strategy": strategy,
-                        "total_score": base + strategy_index * 90,
-                        "completed_tasks": 8 + scale_index * 4 + strategy_index,
-                        "timeout_tasks": difficulty_index + strategy_index,
-                        "total_distance": 120 + scale_index * 95 + strategy_index * 28,
-                        "charging_times": difficulty_index * 2 + scale_index + strategy_index,
-                        "low_battery_events": difficulty_index * 5 + scale_index * 2 + strategy_index,
-                        "charging_requests": difficulty_index * 4 + scale_index * 2 + strategy_index,
-                        "charging_queue_events": difficulty_index + strategy_index,
-                        "total_charging_wait_time": difficulty_index * 12 + scale_index * 4 + strategy_index,
-                        "max_queue_length": difficulty_index + strategy_index,
-                    }
-                )
-    return pd.DataFrame(rows)
+def load_results() -> pd.DataFrame:
+    """Load the official 48-row experiment CSV.
 
-
-def load_or_create_results() -> pd.DataFrame:
+    Final report charts must be based on real batch experiment output.  If the
+    CSV is missing or incomplete, stop and ask the user to regenerate it.
+    """
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
     try:
         df = pd.read_csv(CSV_PATH)
-    except (FileNotFoundError, EmptyDataError):
-        df = create_sample_data()
-        df.to_csv(CSV_PATH, index=False)
-        return df
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(
+            "results/experiment_results.csv not found. "
+            "Please run python3 batch_experiment.py all first."
+        ) from exc
+    except EmptyDataError as exc:
+        raise ValueError(
+            "results/experiment_results.csv is empty. "
+            "Please run python3 batch_experiment.py all first."
+        ) from exc
 
-    has_required_columns = all(column in df.columns for column in REQUIRED_COLUMNS)
-    if df.empty or not has_required_columns:
-        df = create_sample_data()
-        df.to_csv(CSV_PATH, index=False)
+    missing_columns = [column for column in REQUIRED_COLUMNS if column not in df.columns]
+    if missing_columns:
+        raise ValueError(
+            f"experiment_results.csv 缺少必要列: {missing_columns}. "
+            "Please run python3 batch_experiment.py all first."
+        )
+
+    if df.empty:
+        raise ValueError(
+            "experiment_results.csv 没有任何实验行。"
+            "Please run python3 batch_experiment.py all first."
+        )
+
+    if len(df) != EXPECTED_ROWS:
+        raise ValueError(
+            f"实验行数不完整: 当前 {len(df)} 行，期望 {EXPECTED_ROWS} 行 "
+            "(4 scales x 3 difficulties x 4 strategies). "
+            "Please run python3 batch_experiment.py all first."
+        )
+
+    if df[REQUIRED_COLUMNS].isna().any().any():
+        bad_columns = df[REQUIRED_COLUMNS].columns[df[REQUIRED_COLUMNS].isna().any()].tolist()
+        raise ValueError(f"experiment_results.csv 存在空值/NaN 列: {bad_columns}")
+
+    required_combinations = {
+        (difficulty, scale, strategy)
+        for difficulty in DIFFICULTIES
+        for scale in SCALES
+        for strategy in STRATEGIES
+    }
+    actual_combinations = set(zip(df["difficulty"], df["scale"], df["strategy"]))
+    missing_combinations = sorted(required_combinations - actual_combinations)
+    if missing_combinations:
+        raise ValueError(f"experiment_results.csv 缺少实验组合: {missing_combinations}")
 
     return df
 
@@ -117,9 +133,14 @@ def plot_grouped_bar(df: pd.DataFrame, metric: str, title: str, ylabel: str, fil
     x_positions = list(range(len(SCALES)))
     num_strategies = len(STRATEGIES)
     bar_width = 0.8 / max(1, num_strategies)
-    colors = {"nearest": "#3182ce", "largest": "#dd6b20", "energy_aware_hybrid": "#2ca02c"}
+    colors = {
+        "nearest": "#3182ce",
+        "largest": "#dd6b20",
+        "energy_aware_hybrid": "#2ca02c",
+        "genetic_algorithm": "#805ad5",
+    }
 
-    plt.figure(figsize=(8, 5))
+    plt.figure(figsize=(9.5, 5.4))
     for index, strategy in enumerate(STRATEGIES):
         offset = (index - (num_strategies - 1) / 2) * bar_width
         values = pivot[strategy] if strategy in pivot.columns else [0] * len(SCALES)
@@ -131,14 +152,14 @@ def plot_grouped_bar(df: pd.DataFrame, metric: str, title: str, ylabel: str, fil
     plt.xlabel("scale")
     plt.ylabel(ylabel)
     plt.xticks(x_positions, SCALES)
-    plt.legend()
+    plt.legend(fontsize=8)
     plt.tight_layout()
     plt.savefig(FIGURE_DIR / file_name, dpi=150)
     plt.close()
 
 
 def main() -> None:
-    df = load_or_create_results()
+    df = load_results()
     FIGURE_DIR.mkdir(parents=True, exist_ok=True)
     language = setup_font()
 
@@ -267,6 +288,7 @@ def main() -> None:
     print(f"Loaded data from: {CSV_PATH}")
     print(f"Rows: {len(df)}")
     print(f"Difficulties: {sorted(df['difficulty'].unique())}")
+    print(f"Strategies: {list(STRATEGIES)}")
     print(f"Figures saved to: {FIGURE_DIR}")
 
 

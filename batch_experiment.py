@@ -2,6 +2,7 @@
 
 import json
 import csv
+import math
 import os
 import random
 import sys
@@ -10,6 +11,7 @@ from simulator import Simulator
 from simulator.pathfinder_adapter import RealPathfinder
 from core.difficulty import get_difficulty_config
 from core.map_generator import generate_all_maps
+from strategy import Dispatcher
 
 
 SCALES = ["small", "medium", "large", "extra_large"]
@@ -31,6 +33,48 @@ EXPERIMENT_FIELDS = [
     "total_charging_wait_time",
     "max_queue_length",
 ]
+
+
+def expected_run_count(difficulties: list[str]) -> int:
+    """Return the number of rows expected for the selected experiment scope."""
+    return len(difficulties) * len(SCALES) * len(STRATEGIES)
+
+
+def validate_results(results: list[dict], difficulties: list[str]) -> None:
+    """Fail fast if the unified experiment output is incomplete.
+
+    This prevents accidentally writing an old 36-row CSV or a partial CSV when
+    one strategy/scale/difficulty combination crashes.
+    """
+    expected_count = expected_run_count(difficulties)
+    if len(results) != expected_count:
+        raise RuntimeError(
+            f"实验结果行数不完整: 当前 {len(results)} 行，期望 {expected_count} 行。"
+        )
+
+    required_combinations = {
+        (difficulty, scale, strategy)
+        for difficulty in difficulties
+        for scale in SCALES
+        for strategy in STRATEGIES
+    }
+    actual_combinations = {
+        (row.get("difficulty"), row.get("scale"), row.get("strategy"))
+        for row in results
+    }
+    missing = sorted(required_combinations - actual_combinations)
+    if missing:
+        raise RuntimeError(f"实验组合缺失: {missing}")
+
+    for index, row in enumerate(results, start=1):
+        for field in EXPERIMENT_FIELDS:
+            if field not in row:
+                raise RuntimeError(f"第 {index} 行缺少字段: {field}")
+            value = row[field]
+            if value is None or value == "":
+                raise RuntimeError(f"第 {index} 行字段为空: {field}")
+            if isinstance(value, float) and math.isnan(value):
+                raise RuntimeError(f"第 {index} 行字段为 NaN: {field}")
 
 
 def get_default_graph():
@@ -197,7 +241,18 @@ def run_single_experiment(scale: str, strategy: str, duration: int = 180,
     graph_data = load_graph_data(scale)
     pathfinder = RealPathfinder(map_path)
     config = get_difficulty_config(scale, difficulty)
-    sim = Simulator(graph_data, scale, strategy, pathfinder=pathfinder, config=config)
+    # Use converted graph_data to initialize B's nodes, task points and
+    # charging stations, then inject A's RealPathfinder for true Dijkstra.
+    # Passing pathfinder directly makes Simulator read A node types
+    # (warehouse/charging/normal), so B-side charging/task logic becomes empty.
+    sim = Simulator(graph_data, scale, strategy, config=config)
+    sim.pathfinder = pathfinder
+    sim._dispatcher = Dispatcher(
+        pathfinder,
+        strategy,
+        consume_rate=sim.energy_per_km,
+        load_capacity=sim.load_capacity,
+    )
 
     if sim._task_generator is not None:
         sim._task_generator.reset(seed)
@@ -244,6 +299,8 @@ def run_batch_experiment(difficulty: str = "easy"):
     # Ensure all maps exist
     ensure_all_maps()
 
+    failures = []
+
     for current_difficulty in difficulties:
         for scale in SCALES:
             for strategy in STRATEGIES:
@@ -273,6 +330,17 @@ def run_batch_experiment(difficulty: str = "easy"):
                     print(f"  错误: {current_difficulty}/{scale}/{strategy} - {e}")
                     import traceback
                     traceback.print_exc()
+                    failures.append((current_difficulty, scale, strategy, str(e)))
+
+    if failures:
+        print("\n以下实验失败，已停止写入 CSV：")
+        for difficulty_name, scale_name, strategy_name, error_text in failures:
+            print(f"- {difficulty_name}/{scale_name}/{strategy_name}: {error_text}")
+        raise RuntimeError(
+            f"批量实验失败 {len(failures)} 组；请修复后重新运行，不会生成残缺 CSV。"
+        )
+
+    validate_results(results, difficulties)
 
     # 保存结果到 CSV
     os.makedirs("results", exist_ok=True)
