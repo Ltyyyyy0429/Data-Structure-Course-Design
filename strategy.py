@@ -195,7 +195,7 @@ class Dispatcher:
                 task_node = int(task.get('node_id', 0))
 
                 try:
-                    # 1. 计算路径与距离
+                    # 1. 依赖 A 模块计算距离与路径 (小车到任务点的路径无法缓存，因为每辆车位置不同)
                     path, d1 = self.pathfinder.find_path_and_distance(veh_node, task_node)
                     
                     # 2. 获取最近充电站信息（优先读缓存）

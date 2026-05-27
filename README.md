@@ -1,89 +1,72 @@
 # Data-Structure-Course-Design
 
-## D 可视化模块使用说明
+本项目是《数据结构》课程设计：新能源物流车队协同调度。
 
-本模块由 D / yyb 负责，用于展示“新能源物流车队协同调度”的图形界面和实验结果图表。
+系统目标是在城市路网中模拟新能源物流车队面对动态配送任务时的调度过程。当前代码已经包含图结构与 Dijkstra 寻路、基础仿真引擎、三种调度策略、批量实验脚本、Matplotlib 图表和 Pygame 可视化入口。
 
-### 1. 安装依赖
+## 快速运行
+
+安装依赖：
 
 ```bash
 python3 -m pip install -r requirements.txt
 ```
 
-### 2. 运行 Pygame UI 原型
-
-```bash
-python3 ui/pygame_app.py
-```
-
-当前 UI 是假数据原型，不依赖 A/B/C 的真实模块。界面中可以看到道路、节点、仓库、充电站、任务点、车辆和运行指标。
-
-键盘操作：
-
-- `SPACE`：暂停 / 继续
-- `1`：切换策略为 `nearest`
-- `2`：切换策略为 `largest`
-- `3`：切换策略为 `energy_aware_hybrid`
-- `R`：重置假数据
-- `ESC`：退出
-
-后续 B 的仿真引擎完成后，联调时只需要在 `pygame_app.py` 中把 demo state 替换成 `simulator.get_state()`。
-
-当前已经新增 `ui/state_adapter.py` 作为 UI 和仿真引擎之间的数据对接层：
-
-- `get_demo_state(demo_world)`：保留当前假数据原型。
-- `load_state_from_simulator(simulator)`：后续接入真实仿真器时调用，内部会执行 `simulator.get_state()`。
-- `validate_state(state)`：检查 state 是否包含 `nodes`、`edges`、`vehicles`、`tasks`、`charging_stations`、`metrics` 六个核心字段。
-
-### 3. 生成 Matplotlib 实验图表
-
-```bash
-python3 visualization/plot_results.py
-```
-
-脚本会读取 `results/experiment_results.csv`。如果 CSV 不存在或为空，会自动生成一份示例实验数据。
-
-生成的图片会保存到：
-
-```text
-results/figures/
-```
-
-### 4. 后续需要 A/B/C 提供的统一 state 字典格式
-
-D 模块后续会通过统一的 `state` 字典接入 A/B/C 的真实模块，建议格式如下：
-
-```python
-{
-    "nodes": ...,
-    "edges": ...,
-    "vehicles": ...,
-    "tasks": ...,
-    "charging_stations": ...,
-    "metrics": ...
-}
-```
-
-其中：
-
-- `nodes`：图中的节点，包括普通节点、仓库、充电站等。
-- `edges`：道路边，用于绘制城市路网。
-- `vehicles`：车辆信息，包括位置、电量、状态等。
-- `tasks`：当前任务点信息，包括位置、重量、状态等。
-- `charging_stations`：充电站信息，包括位置和排队长度。
-- `metrics`：当前时间、策略、总收益、完成任务数、超时任务数、总路径长度、充电次数等统计指标。
-
-## A 图结构与寻路模块使用说明
-
-本模块由 A 负责，用于提供城市路网图结构、道路边、Dijkstra 最短路，以及小 / 中 / 大 / 特大四种规模的地图数据。
-
-### 1. 生成四种规模地图
+生成或检查地图与寻路：
 
 ```bash
 python3 demo_graph.py
 ```
 
-运行后会生成：
+运行仿真测试：
+
+```bash
+python3 test_simulator.py
+```
+
+运行完整批量实验：
+
+```bash
+python3 batch_experiment.py all
+```
+
+生成实验图表：
+
+```bash
+python3 visualization/plot_results.py
+```
+
+运行假数据 Pygame UI：
+
+```bash
+python3 ui/pygame_app.py
+```
+
+运行接入 Simulator 的 Pygame UI：
+
+```bash
+python3 ui/simulator_app.py
+python3 ui/simulator_app.py --difficulty hard
+```
+
+## 当前模块状态
+
+| 模块 | 负责人 | 当前状态 |
+| --- | --- | --- |
+| A 图结构与寻路 | A | `core/graph.py` 提供 `CityGraph`、节点、边和 Dijkstra 最短路；`data/` 中有 small / medium / large / extra_large 四种规模地图。 |
+| B 仿真引擎 | B | `simulator/` 支持车辆、电量、载重、任务、充电站、排队、任务完成和评分；仍有部分参数与策略效果需要继续调优。 |
+| C 调度策略 | C | `strategy.py` 支持 `nearest`、`largest`、`energy_aware_hybrid` 三种策略。 |
+| D 可视化与实验 | D / yyb | `ui/` 提供 Pygame UI，`visualization/` 提供图表生成，`batch_experiment.py` 输出统一实验 CSV。 |
+
+## A 图结构与寻路模块
+
+生成四种规模地图：
+
+```bash
+python3 demo_graph.py
+```
+
+地图文件：
 
 ```text
 data/small_map.json
@@ -92,45 +75,209 @@ data/large_map.json
 data/extra_large_map.json
 ```
 
-### 2. 在代码中使用
+代码中使用：
 
 ```python
 from core.graph import CityGraph
 
 graph = CityGraph.from_json("data/small_map.json")
 path, distance = graph.shortest_path(0, 5)
-print(path, distance)
 ```
 
-### 3. 给 B/C/D 的接口
+主要接口：
 
-- B 仿真引擎可以调用 `shortest_path(start_id, end_id)` 计算车辆移动路径。
-- C 调度策略可以调用 `shortest_path(start_id, task_node_id)` 比较车辆到不同任务的距离。
-- D 可视化模块可以调用 `to_state_nodes()` 和 `to_state_edges()` 获取绘图所需的地图数据。
+- B 可以调用 `shortest_path(start_id, end_id)` 计算车辆移动路径。
+- C 可以调用 `shortest_path(start_id, task_node_id)` 比较任务距离。
+- D 可以调用 `to_state_nodes()` 和 `to_state_edges()` 绘制地图。
 
-### 4. JSON 地图格式
+## B 仿真与真实寻路接入
 
-```json
-{
-  "nodes": [
-    {"id": 0, "x": 8.0, "y": 50.0, "type": "warehouse"},
-    {"id": 1, "x": 11.89, "y": 5.88, "type": "normal"}
-  ],
-  "edges": [
-    {"from": 1, "to": 0, "distance": 44.29}
-  ]
-}
+`simulator/pathfinder_adapter.py` 中的 `RealPathfinder` 使用 A 的 `CityGraph.from_json()` 加载地图，并通过 Dijkstra 计算真实最短路径。
+
+常用接口：
+
+- `find_path_and_distance(start_node, end_node)`：返回 `(path, distance)`。
+- `find_path(start_node, end_node)`：返回路径和距离。
+- `get_distance(start_node, end_node)`：返回最短距离。
+- `nearest_charging_station(start_node)`：返回最近充电站节点和距离。
+- `get_state_nodes()` / `get_state_edges()`：提供 UI 绘图数据。
+
+真实寻路 demo：
+
+```bash
+python3 demo_real_pathfinder.py
+python3 demo_simulator_real_pathfinder.py
+```
+
+`Simulator` 当前可以通过 `pathfinder=` 参数注入 `RealPathfinder`。批量实验和真实 Pygame UI 都使用这个方式接入 A 的路网与 Dijkstra。
+
+## 三种调度策略定位
+
+当前 `strategy.py` 支持三种策略：
+
+| 策略 | 定位 | 当前实现说明 |
+| --- | --- | --- |
+| `nearest` | 最近任务优先 baseline | 空闲车辆优先选择距离最近的可行任务，便于作为朴素贪心对照。 |
+| `largest` | 最大重量优先 baseline | 优先选择重量较大的可行任务，可能导致距离和时效表现较差，适合在报告中作为反例对比。 |
+| `energy_aware_hybrid` | 能量感知综合策略 | 综合任务重量、截止时间、距离、电量风险和充电站排队压力；当前仍处于调参阶段，不应写成已经全面优于 baseline。 |
+
+三种策略都会通过载重可行性过滤，Simulator 在真正分配任务前也会做二次检查，避免明显超载任务被执行。
+
+## 难度配置说明
+
+难度参数由 `core/difficulty.py` 统一管理。当前支持：
+
+| 难度 | 电池容量 | 单位距离耗电 | 低电量阈值 | 初始电量 | 动态任务概率 | 截止时间范围 | 充电桩数量 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `easy` | 120 kWh | 0.35 kWh/km | 20% = 24 kWh | 90% - 100% | 0.30 | 60 - 120 min | 每站 2 个 |
+| `medium` | 100 kWh | 0.60 kWh/km | 30% = 30 kWh | 70% - 100% | 0.35 | 65 - 90 min | 每站 2 个 |
+| `hard` | 80 kWh | 0.90 kWh/km | 40% = 32 kWh | 45% - 80% | 0.40 | 45 - 60 min | 每站 1 个 |
+
+补充说明：
+
+- `easy` 续航压力较低，批量实验中可能不会触发充电。
+- `medium` 会提高能耗和任务压力，更容易出现补能需求。
+- `hard` 初始电量更低、能耗更高、充电速度更慢，并且每站充电桩更少，更容易出现排队。
+- 当前 hard 难度依赖参数自然制造补能压力，不再通过人工把车辆塞进充电站或手动制造队列。
+
+## 批量实验说明
+
+完整实验命令：
+
+```bash
+python3 batch_experiment.py all
+```
+
+实验维度：
+
+- 难度：`easy / medium / hard`
+- 规模：`small / medium / large / extra_large`
+- 策略：`nearest / largest / energy_aware_hybrid`
+
+完整运行后应输出 36 行结果：
+
+```text
+3 difficulties × 4 scales × 3 strategies = 36 rows
+```
+
+统一结果文件：
+
+```text
+results/experiment_results.csv
+```
+
+CSV 字段包括：
+
+- `difficulty`
+- `scale`
+- `strategy`
+- `total_score`
+- `completed_tasks`
+- `timeout_tasks`
+- `total_distance`
+- `charging_times`
+- `low_battery_events`
+- `charging_requests`
+- `charging_queue_events`
+- `total_charging_wait_time`
+- `max_queue_length`
+
+当前 P1 阶段最近一次运行结果显示：`nearest` 在多个场景中仍然较强，`energy_aware_hybrid` 还需要继续调参才能稳定体现中高难度优势。因此报告中可以把当前结果写成“阶段性实验结果”，不要写成最终优化结论。
+
+## Matplotlib 图表说明
+
+生成图表：
+
+```bash
+python3 visualization/plot_results.py
+```
+
+脚本读取：
+
+```text
+results/experiment_results.csv
+```
+
+图表输出目录：
+
+```text
+results/figures/
+```
+
+当前图表覆盖总收益、完成任务数、超时任务数、总路径长度、充电次数、充电需求、排队次数、最大队列长度和总等待时间等指标。
+
+注意：当前 `plot_results.py` 仍保留开发阶段的示例数据回退逻辑。如果 CSV 不存在或字段不完整，脚本会生成示例数据。最终报告前建议执行 Plan2 的 D-5，删除该回退逻辑，确保图表一定来自真实批量实验。
+
+## D 可视化模块说明
+
+### 假数据 UI
+
+运行：
+
+```bash
+python3 ui/pygame_app.py
 ```
 
 说明：
 
-- `nodes` 保存图中的节点，包括仓库、普通节点、充电站等。
-- `edges` 保存道路。当前地图生成器生成的是双向道路，JSON 中每条道路只保存一条记录，读取时会自动加入双向邻接表。
-- 如果 `add_edge()` 没有传入 `distance`，系统会自动根据两个节点的 x/y 坐标计算欧氏距离。
+- 使用 `DemoWorld` 假数据，不依赖 Simulator。
+- 显示城市路网、仓库、充电站、任务点、车辆和右侧指标面板。
+- 支持车辆规划路径线：如果 vehicle state 中包含 `path`，会用半透明线条绘制。
+- 电池显示会优先使用 `battery / max_battery` 计算百分比；如果没有 `max_battery`，保留原来的显示方式。
 
-## 联调 state 适配说明
+按键：
 
-A/B/D 联调时，建议 D 的 Pygame UI 最终读取：
+- `SPACE`：暂停 / 继续
+- `1`：切换 `nearest`
+- `2`：切换 `largest`
+- `R`：重置假数据
+- `ESC`：退出
+
+### Simulator UI
+
+运行：
+
+```bash
+python3 ui/simulator_app.py
+python3 ui/simulator_app.py --difficulty medium
+python3 ui/simulator_app.py --difficulty hard
+```
+
+说明：
+
+- 使用 `data/small_map.json` 创建 `RealPathfinder`。
+- 创建 B 的 `Simulator`，并通过 `ui/state_adapter.py` 转换成 Pygame 可绘制 state。
+- 当前支持 `easy / medium / hard` 难度切换，但还没有 `--scale` 参数。
+- 当前保留低电量演示逻辑，会把第一辆车电量设低，方便观察充电行为。
+
+按键：
+
+- `SPACE`：暂停 / 继续
+- `R`：重置 Simulator
+- `1`：使用 `nearest` 重置
+- `2`：使用 `largest` 重置
+- `3`：使用 `energy_aware_hybrid` 重置
+- `ESC`：退出
+
+### State 适配层
+
+`ui/state_adapter.py` 用于隔离 UI 和仿真引擎数据格式。
+
+运行测试：
+
+```bash
+python3 ui/test_state_adapter.py
+```
+
+适配内容：
+
+- `depot` 转成 `warehouse`。
+- `charging_station` 转成 `charging`。
+- `from_node` / `to_node` 转成 `from` / `to`。
+- 车辆如果只有 `current_node` 或 `current_node_id`，会根据节点补充 `x` / `y`。
+- 任务和充电站如果只有 `node_id`，也会根据节点补充坐标。
+
+推荐 UI 读取方式：
 
 ```python
 from ui.state_adapter import normalize_state
@@ -138,7 +285,7 @@ from ui.state_adapter import normalize_state
 state = normalize_state(simulator.get_state())
 ```
 
-B 仿真引擎可以先按自己的模型输出 `raw_state`，但建议尽量包含以下六个核心字段：
+统一 state 建议包含：
 
 ```python
 {
@@ -151,152 +298,11 @@ B 仿真引擎可以先按自己的模型输出 `raw_state`，但建议尽量包
 }
 ```
 
-当前 `ui/state_adapter.py` 会做这些兼容处理：
+## 当前 P1 阶段注意事项
 
-- `depot` 会转换为 `warehouse`。
-- `charging_station` 会转换为 `charging`。
-- `from_node` / `to_node` 会转换为 `from` / `to`。
-- 如果车辆只有 `current_node` 或 `current_node_id`，会根据节点坐标补充 `x` / `y`。
-- 如果任务或充电站只有 `node_id`，也会根据节点坐标补充 `x` / `y`。
-
-运行适配层测试：
-
-```bash
-python3 ui/test_state_adapter.py
-```
-
-## A-B 真实寻路联调说明
-
-运行 RealPathfinder demo：
-
-```bash
-python3 demo_real_pathfinder.py
-```
-
-`RealPathfinder` 位于 `simulator/pathfinder_adapter.py`，内部使用 A 模块的 `CityGraph.from_json()` 加载地图，并通过 `CityGraph.shortest_path()` 调用 Dijkstra 计算真实最短路径。
-
-它兼容 B 当前 `MockPathfinder` 的主要接口：
-
-- `find_path_and_distance(start_node, end_node)`：规范寻路入口，返回 `(path, distance)`。
-- `find_path(start_node, end_node)`：同上，别名。
-- `get_shortest_path(start_node, end_node)`：返回路径列表。
-- `get_distance(start_node, end_node)`：返回最短路径距离。
-- `nearest_charging_station(start_node)`：返回最近充电站节点和距离。
-
-运行真实寻路版仿真 demo：
-
-```bash
-python3 demo_simulator_real_pathfinder.py                  # 默认 EASY 难度
-python3 demo_simulator_real_pathfinder.py --difficulty hard  # HARD 难度
-```
-
-当前接入方式是：构造 `RealPathfinder` 实例，通过 `Simulator` 构造函数的 `pathfinder=` 和 `config=` 参数注入。Simulator 内部不再自行构建 CityGraph，所有路径计算（包括去充电站的导航）统一经过 RealPathfinder → Dijkstra，不再使用欧几里得距离 fallback。
-
-```python
-from simulator import Simulator
-from simulator.pathfinder_adapter import RealPathfinder
-from core.difficulty import get_difficulty_config
-
-pathfinder = RealPathfinder("data/small_map.json")
-config = get_difficulty_config("small", "easy")
-simulator = Simulator(graph_data, scale="small", strategy="nearest",
-                      pathfinder=pathfinder, config=config)
-```
-
-真实寻路版 Pygame 演示也可以运行：
-
-```bash
-python3 ui/simulator_app.py
-```
-
-这个入口会用 `RealPathfinder` 加载 A 的 `data/small_map.json`，创建 B 的 `Simulator`，再通过 D 的 `state_adapter` 和 Pygame 绘制仿真状态。
-
-C 模块调度策略已完全接入，`Dispatcher` 通过 `RealPathfinder.find_path_and_distance()` 计算路径，并在 action 字典中携带 `path` 字段供 Simulator 直接使用。
-
-## Pygame 接入 Simulator 演示说明
-
-原假数据 UI 仍然使用：
-
-```bash
-python3 ui/pygame_app.py
-```
-
-接入 B 当前 `Simulator` 的真实仿真 UI 使用：
-
-```bash
-python3 ui/simulator_app.py                       # 默认 EASY 难度
-python3 ui/simulator_app.py --difficulty hard      # HARD 难度
-```
-
-B 仿真引擎终端测试使用：
-
-```bash
-python3 test_simulator.py
-```
-
-`ui/simulator_app.py` 会创建 B 的 `Simulator`，循环调用当前版本提供的 `update(dt)` 方法，并通过 `ui/state_adapter.py` 转换成 D 的 Pygame 可绘制 state。该入口还保留了低电量演示：默认会把第一辆车电量设为 15，方便观察 `charging_times` 或充电站负荷变化。
-
-键盘操作：
-
-- `SPACE`：暂停 / 继续
-- `R`：重置 Simulator
-- `1`：用 `nearest` 策略重置 Simulator
-- `2`：用 `largest` 策略重置 Simulator
-- `3`：用 `energy_aware_hybrid` 策略重置 Simulator
-- `ESC`：退出
-
-注意：当前 `simulator_app.py` 已使用 A 的 `RealPathfinder` 进行路径计算，调度器已接入 C 的 `Dispatcher`（支持 nearest / largest / energy_aware_hybrid 三种策略）。支持通过 `--difficulty easy|medium|hard` 切换难度配置。
-
-## 车辆电池与难度参数说明
-
-车辆电池参数由 `core/difficulty.py` 统一管理，B 的 `Simulator` 会读取对应难度配置。参数设计目标是让补能压力随难度自然增加，而不是依赖手动把车辆放进充电站。
-
-| 难度 | 电池容量 | 单位距离耗电 | 低电量阈值 | 初始电量范围 | 充电速度 |
-| --- | --- | --- | --- | --- | --- |
-| easy | 120 kWh | 0.35 kWh/km | 20% = 24 kWh | 90% - 100% | 50 kWh/h |
-| medium | 100 kWh | 0.60 kWh/km | 30% = 30 kWh | 70% - 100% | 45 kWh/h |
-| hard | 80 kWh | 0.90 kWh/km | 40% = 32 kWh | 45% - 80% | 35 kWh/h |
-
-含义：
-
-- easy：续航较宽松，通常只有长距离或长时间实验才会触发充电。
-- medium：续航压力适中，车辆更容易在中后期触发补能。
-- hard：初始电量较低、能耗较高、充电速度较慢，更容易出现充电和排队压力。
-
-## 评分公式与能量预检机制
-
-### 任务完成评分
-
-任务完成后得分由两项组成：时间奖励 + 路径惩罚。
-
-```
-score = 100 + time_early × 2 - task_distance × 0.3
-```
-
-其中：
-- `time_early = max(0, deadline - current_time)` — 越早完成得分越高
-- `task_distance` — 从车辆分配点到任务节点的最短路径距离（Dijkstra 计算），在分配时记录
-- 超时未完成的任务（含 ASSIGNED 状态）扣 100 分
-
-### Simulator 层能量预检
-
-`Simulator._apply_dispatch()` 在分配任务前进行物理可行性检查（不依赖策略层）：
-
-1. **载重检查**：`vehicle.load + task.weight ≤ load_capacity`
-2. **能量预检**（`_can_reach_and_return`）：车辆电量必须足够到达任务节点并安全返回最近的充电站或仓库
-
-```
-required_energy ≥ (d1 + recovery_dist) × energy_per_km
-d1 = distance(vehicle.current → task)
-recovery_dist = min(distance(task → nearest_charger), distance(task → depot))
-```
-
-策略层（`strategy.py`）不需要任何修改，nearest/largest 作为 baseline 照常输出 action，Simulator 统一拦截不可行的分配。
-
-### 移动中低电量检测
-
-车辆在移动过程中不再仅比较绝对阈值 `battery < low_battery_threshold`，而是进行可达性判断：
-
-- 计算剩余路径距离 + 从终点到最近充电站的距离
-- 仅在电量不足到达目标且无法安全撤退时才触发低电量处理
-- 空闲车辆（`_check_low_battery`）保持原绝对阈值检查
+- `batch_experiment.py all` 可以生成 36 行统一 CSV。
+- `visualization/plot_results.py` 可以从 CSV 生成图表，但示例数据回退逻辑还应在 D-5 中删除。
+- `ui/pygame_app.py` 是稳定的假数据展示入口，不负责真实仿真。
+- `ui/simulator_app.py` 是真实仿真展示入口，目前固定 small 地图，支持难度切换。
+- `energy_aware_hybrid` 已接入能量和排队因素，但当前实验结果还没有稳定压过 `nearest`，后续 C 模块仍需调参和验证。
+- README 中的功能说明以当前代码为准，不把未完成的 `--scale`、更复杂 GUI、全局最优算法等内容写成已实现。
