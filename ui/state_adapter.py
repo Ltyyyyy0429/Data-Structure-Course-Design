@@ -264,6 +264,11 @@ def _normalize_metrics(metrics: Dict[str, Any]) -> Dict[str, Any]:
     normalized_metrics.setdefault("timeout_tasks", 0)
     normalized_metrics.setdefault("total_distance", 0)
     normalized_metrics.setdefault("charging_times", 0)
+    normalized_metrics.setdefault("low_battery_events", 0)
+    normalized_metrics.setdefault("charging_requests", 0)
+    normalized_metrics.setdefault("charging_queue_events", 0)
+    normalized_metrics.setdefault("total_charging_wait_time", 0)
+    normalized_metrics.setdefault("max_queue_length", 0)
     return normalized_metrics
 
 

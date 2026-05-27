@@ -15,15 +15,21 @@ from core.map_generator import generate_all_maps
 def main() -> None:
     generate_all_maps()
     print("Generated map files:")
-    print("- data/small_map.json")
-    print("- data/medium_map.json")
-    print("- data/large_map.json")
+    for scale in ["small", "medium", "large", "extra_large"]:
+        print(f"- data/{scale}_map.json")
     print()
 
     graph = CityGraph.from_json("data/small_map.json")
     print("Loaded data/small_map.json")
     print(f"Node count: {len(graph.nodes)}")
     print(f"Edge count: {len(graph.edges)}")
+    print()
+
+    # Also show extra_large stats
+    xl = CityGraph.from_json("data/extra_large_map.json")
+    print(f"Loaded data/extra_large_map.json")
+    print(f"Node count: {len(xl.nodes)}")
+    print(f"Edge count: {len(xl.edges)}")
     print()
 
     start_id = 0

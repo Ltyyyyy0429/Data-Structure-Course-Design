@@ -22,6 +22,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from simulator import Simulator
 from simulator.pathfinder_adapter import RealPathfinder
+from core.difficulty import get_difficulty_config
 from state_adapter import load_state_from_simulator
 import pygame_app
 
@@ -30,11 +31,11 @@ FPS = 60
 SIM_MINUTES_PER_REAL_SECOND = 8.0
 LOW_BATTERY_DEMO = True
 LOW_BATTERY_VALUE = 15.0
+UI_DIFFICULTY = "easy"
 
 
 def build_b_graph_from_pathfinder(pathfinder: RealPathfinder) -> dict:
     """Convert A map data to B simulator's current graph_data format."""
-
     nodes = []
     for node_id, node in pathfinder.graph.nodes.items():
         if node.type == "warehouse":
@@ -47,32 +48,27 @@ def build_b_graph_from_pathfinder(pathfinder: RealPathfinder) -> dict:
 
     edges = []
     for edge in pathfinder.graph.edges:
-        edges.append(
-            {
-                "from_node": edge.from_node,
-                "to_node": edge.to_node,
-                "distance": edge.distance,
-            }
-        )
+        edges.append({
+            "from_node": edge.from_node,
+            "to_node": edge.to_node,
+            "distance": edge.distance,
+        })
 
     return {"nodes": nodes, "edges": edges}
 
 
-def create_simulator(strategy: str = "nearest") -> Simulator:
-    """Create a Simulator and replace MockPathfinder with RealPathfinder."""
-
+def create_simulator(strategy: str = "nearest", difficulty: str = "easy") -> Simulator:
+    """Create a Simulator with RealPathfinder and optional difficulty config."""
     random.seed(2026)
     pathfinder = RealPathfinder("data/small_map.json")
+    config = get_difficulty_config("small", difficulty)
     simulator = Simulator(
         graph_data=build_b_graph_from_pathfinder(pathfinder),
         scale="small",
         strategy=strategy,
+        pathfinder=pathfinder,
+        config=config,
     )
-
-    if hasattr(simulator, "set_pathfinder"):
-        simulator.set_pathfinder(pathfinder)
-    else:
-        simulator._pathfinder = pathfinder
 
     if hasattr(simulator, "add_test_task"):
         simulator.add_test_task("ui_t1", 5, 180, 0, 30)
@@ -133,9 +129,9 @@ def advance_simulator(simulator: Simulator, dt_minutes: float) -> bool:
     return False
 
 
-def reset_simulator(strategy: str) -> Simulator:
-    print(f"[Simulator UI] Reset simulator with strategy: {strategy}")
-    return create_simulator(strategy=strategy)
+def reset_simulator(strategy: str, difficulty: str = "easy") -> Simulator:
+    print(f"[Simulator UI] Reset simulator with strategy: {strategy}, difficulty: {difficulty}")
+    return create_simulator(strategy=strategy, difficulty=difficulty)
 
 
 def main() -> None:
@@ -146,7 +142,7 @@ def main() -> None:
     fonts = pygame_app.choose_fonts()
 
     strategy = "nearest"
-    simulator = create_simulator(strategy=strategy)
+    simulator = create_simulator(strategy=strategy, difficulty=UI_DIFFICULTY)
     paused = False
     running = True
     warned_no_update = False
@@ -163,13 +159,16 @@ def main() -> None:
                 elif event.key == pygame.K_SPACE:
                     paused = not paused
                 elif event.key == pygame.K_r:
-                    simulator = reset_simulator(strategy)
+                    simulator = reset_simulator(strategy, UI_DIFFICULTY)
                 elif event.key == pygame.K_1:
                     strategy = "nearest"
-                    simulator = reset_simulator(strategy)
+                    simulator = reset_simulator(strategy, UI_DIFFICULTY)
                 elif event.key == pygame.K_2:
                     strategy = "largest"
-                    simulator = reset_simulator(strategy)
+                    simulator = reset_simulator(strategy, UI_DIFFICULTY)
+                elif event.key == pygame.K_3:
+                    strategy = "energy_aware_hybrid"
+                    simulator = reset_simulator(strategy, UI_DIFFICULTY)
 
         if not paused:
             dt_minutes = dt_seconds * SIM_MINUTES_PER_REAL_SECOND
@@ -189,4 +188,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    if len(sys.argv) > 2 and sys.argv[1] == "--difficulty":
+        UI_DIFFICULTY = sys.argv[2]
     main()
