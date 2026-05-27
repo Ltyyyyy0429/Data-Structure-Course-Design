@@ -373,6 +373,65 @@ def build_node_lookup(nodes: Dict) -> Dict:
     return {node["id"]: node for node in nodes}
 
 
+def find_node_for_draw(node_by_id: Dict, node_id) -> Dict | None:
+    """Find a node while tolerating int/string id differences."""
+
+    if node_id in node_by_id:
+        return node_by_id[node_id]
+
+    node_text = str(node_id)
+    if node_text in node_by_id:
+        return node_by_id[node_text]
+
+    try:
+        node_int = int(node_id)
+    except (TypeError, ValueError):
+        return None
+
+    return node_by_id.get(node_int)
+
+
+def vehicle_screen_position(vehicle: Dict, node_by_id: Dict) -> Tuple[int, int] | None:
+    """Return the vehicle's current screen position if it can be located."""
+
+    if vehicle.get("x") is not None and vehicle.get("y") is not None:
+        return world_to_screen(float(vehicle["x"]), float(vehicle["y"]))
+
+    current_node = vehicle.get("current_node")
+    node = find_node_for_draw(node_by_id, current_node)
+    if node:
+        return world_to_screen(node["x"], node["y"])
+
+    return None
+
+
+def draw_vehicle_paths(surface: pygame.Surface, vehicles: List[Dict], node_by_id: Dict) -> None:
+    """Draw each vehicle's planned path without failing on missing path nodes."""
+
+    overlay = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+    path_color = (220, 72, 72, 115)
+
+    for vehicle in vehicles:
+        path = vehicle.get("path") or []
+        if not path:
+            continue
+
+        points = []
+        start_pos = vehicle_screen_position(vehicle, node_by_id)
+        if start_pos:
+            points.append(start_pos)
+
+        for node_id in path:
+            node = find_node_for_draw(node_by_id, node_id)
+            if node:
+                points.append(world_to_screen(node["x"], node["y"]))
+
+        if len(points) >= 2:
+            pygame.draw.lines(overlay, path_color, False, points, width=4)
+
+    surface.blit(overlay, (0, 0))
+
+
 def draw_map(surface: pygame.Surface, state: Dict, fonts: FontSet) -> None:
     pygame.draw.rect(surface, MAP_BACKGROUND, MAP_RECT, border_radius=8)
     pygame.draw.rect(surface, PANEL_BORDER, MAP_RECT, width=1, border_radius=8)
@@ -393,6 +452,8 @@ def draw_map(surface: pygame.Surface, state: Dict, fonts: FontSet) -> None:
     for node in nodes:
         if node["type"] == "normal":
             pygame.draw.circle(surface, NORMAL_NODE, world_to_screen(node["x"], node["y"]), 5)
+
+    draw_vehicle_paths(surface, state["vehicles"], node_by_id)
 
     for node in nodes:
         if node["type"] == "warehouse":
@@ -446,6 +507,32 @@ def draw_vehicle(surface: pygame.Surface, vehicle: Dict, fonts: FontSet) -> None
     draw_centered_text(surface, vehicle["id"], fonts.tiny, WHITE, center)
 
 
+def format_battery_display(vehicle: Dict) -> Tuple[str, float]:
+    """Return display text and percentage-like value for battery coloring."""
+
+    battery = vehicle.get("battery", 0)
+    max_battery = vehicle.get("max_battery")
+
+    if max_battery is not None:
+        try:
+            max_battery_value = float(max_battery)
+            battery_value = float(battery)
+        except (TypeError, ValueError):
+            max_battery_value = 0
+            battery_value = 0
+
+        if max_battery_value > 0:
+            battery_percent = max(0.0, min(100.0, battery_value / max_battery_value * 100))
+            return f"{battery_percent:.0f}%", battery_percent
+
+    try:
+        battery_value = float(battery)
+    except (TypeError, ValueError):
+        battery_value = 0
+
+    return f"{battery}%", battery_value
+
+
 def draw_panel(surface: pygame.Surface, state: Dict, fonts: FontSet, paused: bool) -> None:
     labels = TEXT[fonts.language]
     metrics = state["metrics"]
@@ -487,13 +574,13 @@ def draw_panel(surface: pygame.Surface, state: Dict, fonts: FontSet, paused: boo
 
     for vehicle in state["vehicles"]:
         status = STATUS_TEXT[fonts.language].get(vehicle["status"], vehicle["status"])
-        battery = vehicle["battery"]
-        battery_color = SUCCESS if battery >= 55 else WARNING if battery >= 30 else DANGER
+        battery_text, battery_level = format_battery_display(vehicle)
+        battery_color = SUCCESS if battery_level >= 55 else WARNING if battery_level >= 30 else DANGER
 
         draw_text(surface, vehicle["id"], fonts.small, TEXT_MAIN, (x, y))
         draw_text(
             surface,
-            f"{labels['battery']}: {battery}%",
+            f"{labels['battery']}: {battery_text}",
             fonts.small,
             battery_color,
             (x + 54, y),
