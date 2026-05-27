@@ -60,17 +60,17 @@ extra_large  energy_aware_hybrid   762.0     5     4    674.9   0
 - **实现**: `required_energy = (remaining_to_target + charger_dist) * energy_per_km`；`remaining_to_target = max(0, _get_distance(current_node, target_node) - accumulated_distance)`；无充电站时回退为 `remaining * 1.5 * energy_per_km`
 - **注意**: `_check_low_battery`（空闲车辆）保持原绝对阈值检查不变
 
-## A-4 (P1) `add_test_task` 推进 `next_task_id`
-- **文件**: `simulator/simulator.py:600-607`
+## A-4 (P1) ✅ `add_test_task` 推进 `next_task_id` — 已完成
+- **文件**: `simulator/simulator.py:641`
 - **修改**: 无论 task_id 格式，始终 `self.next_task_id = max(self.next_task_id, len(self.tasks) + 1000)`
 
-## A-5 (P1) 充电排队去重集合防御性清理
-- **文件**: `simulator/simulator.py:106, 175-187`
-- **修改**: `_queue_for_charging` 入口增加：若 `vehicle.id in queued_vehicle_ids` 但 `vehicle.status != WAITING_FOR_CHARGE`，先清理再入队
+## A-5 (P1) ✅ 充电排队去重集合防御性清理 — 已完成
+- **文件**: `simulator/simulator.py:178-183`
+- **修改**: `_queue_for_charging` 入口增加：若 `vehicle.id in queued_vehicle_ids` 但 `vehicle.status != WAITING_FOR_CHARGE`，先 discard 并递减 queue_length，再正常入队
 
-## A-6 (P1) 单向边 JSON 持久化
-- **文件**: `core/graph.py:Edge`, `core/graph.py:from_json`, `core/map_generator.py`
-- **修改**: Edge 新增 `bidirectional: bool = True`；`_apply_one_way_edges` 标记被单向化的边；`to_json_dict` 输出；`from_json` 读取
+## A-6 (P1) ✅ 单向边 JSON 持久化 — 已完成
+- **文件**: `core/graph.py:Edge(46)`, `core/graph.py:from_json(248)`, `core/map_generator.py:341-350`
+- **修改**: Edge 新增 `bidirectional: bool = True`；`_apply_one_way_edges` 标记被单向化的边（必要时交换 from/to）；`to_json_dict` 输出；`from_json` 读取（默认 True 向后兼容）；4 张地图 JSON 已重新生成
 
 ---
 

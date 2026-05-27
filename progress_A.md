@@ -409,3 +409,46 @@ def initial_battery_range_kwh(self) -> Tuple[float, float]:
 | [README.md](README.md) | 文档：新增评分公式与能量预检说明 |
 | [plan2.md](plan2.md) | 进度：标记 A-1/A-2/A-3 已完成 |
 | [progress_A.md](progress_A.md) | 进度：新增本节 |
+
+---
+
+## 十、P1 缺陷修复（2026-05-27 完成）
+
+### 背景
+
+根据 plan2.md 的 P1 阶段要求，A 成员负责三项代码缺陷修复：`add_test_task` ID 碰撞风险、充电队列去重集合僵尸条目、单向边 JSON 持久化丢失。
+
+### 改动清单
+
+| # | 任务 | 文件 | 说明 |
+|---|------|------|------|
+| A-4 | `add_test_task` 始终推进 `next_task_id` | [simulator/simulator.py:641](simulator/simulator.py#L641) | 原逻辑仅在 `task_id` 匹配 `"t"+数字` 时才推进，`"ui_t1"`/`"real_t1"`/`"initial_0"` 等前缀导致 ID 碰撞。改为无条件 `max(self.next_task_id, len(self.tasks) + 1000)` |
+| A-5 | 充电排队去重集合防御性清理 | [simulator/simulator.py:178-183](simulator/simulator.py#L178-L183) | `_queue_for_charging` 入口新增状态一致性检查：若 `vehicle.id` 在 `queued_vehicle_ids` 中但 `status != WAITING_FOR_CHARGE`，先 discard 并递减 `queue_length` 再正常入队 |
+| A-6 | 单向边 JSON 持久化 | [core/graph.py:35-52](core/graph.py#L35-L52), [core/map_generator.py:341-350](core/map_generator.py#L341-L350) | Edge 新增 `bidirectional: bool = True` 字段；`to_json_dict` 输出；`from_json` 读取（默认 True）；`_apply_one_way_edges` 标记被单向化的 Edge（必要时交换 from/to 使方向与 adjacency 一致）；重新生成 4 张地图 JSON |
+
+### 设计决策
+
+- **A-4 使用 `len(self.tasks) + 1000` 而非 `int(task_id[1:]) + 1`**：无论 task_id 格式如何，始终保证 1000 的 buffer，杜绝碰撞。
+- **A-5 防御性清理而非全局审计**：仅修改 `_queue_for_charging` 入口，最小侵入。与其他修改点（`_handle_charging` 的 discard、`_check_low_battery` 的导航逻辑）互补。
+- **A-6 `bidirectional` 默认 True**：未标记 `bidirectional` 的旧 JSON 文件加载时保持双向行为，向后兼容。
+- **A-6 单向边方向交换**：`_apply_one_way_edges` 随机选择保留方向，若保留的是 `to→from` 则交换 Edge 的 from/to 并设 `bidirectional=False`，确保 JSON 序列化的方向与 adjacency 保留的一致。
+
+### 验证结果
+
+- `test_strategy.py` — 4/4 场景通过
+- `test_integration.py` — 通过
+- `test_simulator.py` — nearest 363.8 分 / largest 363.8 分，无崩溃
+- `batch_experiment.py easy` — 12 组完成，CSV 36 行，分数与 baseline 一致
+- `demo_graph.py` — 4 张地图重新生成，JSON 含 `bidirectional` 字段
+
+### 涉及文件
+
+| 文件 | 改动类型 |
+|------|----------|
+| [simulator/simulator.py](simulator/simulator.py) | 修改：A-4 1 行 + A-5 4 行 |
+| [core/graph.py](core/graph.py) | 修改：Edge dataclass + `to_json_dict` + `add_edge` + `from_json` |
+| [core/map_generator.py](core/map_generator.py) | 修改：`_apply_one_way_edges` 标记 Edge |
+| [data/*.json](data/) | 更新：4 张地图 JSON 含 `bidirectional` 字段 |
+| [CLAUDE.md](CLAUDE.md) | 文档：新增 P1 相关 Gotchas |
+| [README.md](README.md) | 文档：新增单向边持久化说明 |
+| [progress_A.md](progress_A.md) | 进度：新增本节 |

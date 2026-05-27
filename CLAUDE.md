@@ -235,6 +235,12 @@ sim = Simulator(graph_data, scale, strategy, pathfinder=pathfinder, config=confi
 
 **TaskGenerator 已实现**：`simulator/task_generator.py` 不再是死代码。Simulator 在提供 `config` 时会构造 `TaskGenerator` 实例并委托任务生成；无 config 时使用原有简单随机逻辑。
 
+**`add_test_task` 始终推进 `next_task_id`**：无论传入的 `task_id` 格式如何（`"ui_t1"`、`"initial_0"` 等），`add_test_task` 始终执行 `self.next_task_id = max(self.next_task_id, len(self.tasks) + 1000)`，确保后续自动生成的任务 ID 不会与手动添加的任务 ID 碰撞。
+
+**充电排队去重集合防御性清理**：`_queue_for_charging` 入口增加状态一致性检查——若车辆 ID 已在 `queued_vehicle_ids` 中但状态不是 `WAITING_FOR_CHARGE`，先清理再入队，防止僵尸条目导致车辆永久无法重新排队。
+
+**Edge 新增 `bidirectional` 字段**：`core/graph.py` 的 `Edge` dataclass 新增 `bidirectional: bool = True`，`to_json_dict()` 输出此字段，`from_json()` 读取（默认 True 向后兼容）。`_apply_one_way_edges` 在单向化边时标记 `bidirectional=False` 并在必要时交换 from/to 使 Edge 方向与保留的 adjacency 一致。
+
 ### 重复的数据模型
 
 项目中存在两套 `Node` / `Edge` dataclass：

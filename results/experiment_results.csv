@@ -1,3 +1,4 @@
+<<<<<<< Updated upstream
 difficulty,scale,strategy,total_score,completed_tasks,timeout_tasks,total_distance,charging_times,low_battery_events,charging_requests,charging_queue_events,total_charging_wait_time,max_queue_length
 easy,small,nearest,1987.8,10,2,554.0,0,0,0,0,0.0,0
 easy,small,largest,-221.0,4,9,641.4,0,0,0,0,0.0,0
@@ -11,3 +12,18 @@ easy,large,energy_aware_hybrid,634.0,4,4,688.4,0,0,0,0,0.0,0
 easy,extra_large,nearest,754.0,5,4,684.6,0,0,0,0,0.0,0
 easy,extra_large,largest,-478.0,2,7,678.5,0,0,0,0,0.0,0
 easy,extra_large,energy_aware_hybrid,762.0,5,4,674.9,0,0,0,0,0.0,0
+=======
+difficulty,scale,strategy,total_score,completed_tasks,timeout_tasks,total_distance,charging_times,low_battery_events,charging_requests,charging_queue_events,total_charging_wait_time,max_queue_length
+easy,small,nearest,1926.5,10,2,554.0,0,0,0,0,0.0,0
+easy,small,largest,-307.2,4,9,605.4,0,1,1,0,0.0,0
+easy,small,energy_aware_hybrid,223.2,4,7,615.8,0,0,0,0,0.0,0
+easy,medium,nearest,1581.6,10,5,661.7,0,0,0,0,0.0,0
+easy,medium,largest,-920.5,2,11,652.7,0,0,0,0,0.0,0
+easy,medium,energy_aware_hybrid,-42.2,4,9,670.9,0,0,0,0,0.0,0
+easy,large,nearest,516.9,3,4,671.7,0,0,0,0,0.0,0
+easy,large,largest,-627.0,1,7,679.2,0,0,0,0,0.0,0
+easy,large,energy_aware_hybrid,592.2,4,4,688.4,0,0,0,0,0.0,0
+easy,extra_large,nearest,714.9,5,4,684.6,0,0,0,0,0.0,0
+easy,extra_large,largest,-544.5,2,7,671.2,0,0,0,0,0.0,0
+easy,extra_large,energy_aware_hybrid,692.3,5,4,674.9,0,0,0,0,0.0,0
+>>>>>>> Stashed changes

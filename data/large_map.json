@@ -365,532 +365,638 @@
     {
       "from": 1,
       "to": 0,
-      "distance": 42.18
+      "distance": 42.18,
+      "bidirectional": true
     },
     {
       "from": 2,
       "to": 1,
-      "distance": 14.51
+      "distance": 14.51,
+      "bidirectional": true
     },
     {
       "from": 3,
       "to": 2,
-      "distance": 11.36
+      "distance": 11.36,
+      "bidirectional": true
     },
     {
       "from": 4,
       "to": 3,
-      "distance": 14.32
+      "distance": 14.32,
+      "bidirectional": true
     },
     {
       "from": 5,
       "to": 4,
-      "distance": 12.28
+      "distance": 12.28,
+      "bidirectional": true
     },
     {
       "from": 6,
       "to": 5,
-      "distance": 8.93
+      "distance": 8.93,
+      "bidirectional": true
     },
     {
       "from": 7,
       "to": 6,
-      "distance": 15.56
+      "distance": 15.56,
+      "bidirectional": true
     },
     {
       "from": 8,
       "to": 7,
-      "distance": 9.44
+      "distance": 9.44,
+      "bidirectional": true
     },
     {
       "from": 9,
       "to": 1,
-      "distance": 13.49
+      "distance": 13.49,
+      "bidirectional": true
     },
     {
       "from": 10,
       "to": 2,
-      "distance": 10.98
+      "distance": 10.98,
+      "bidirectional": true
     },
     {
       "from": 11,
       "to": 10,
-      "distance": 9.57
+      "distance": 9.57,
+      "bidirectional": true
     },
     {
       "from": 12,
       "to": 11,
-      "distance": 11.61
+      "distance": 11.61,
+      "bidirectional": true
     },
     {
       "from": 13,
       "to": 12,
-      "distance": 11.69
+      "distance": 11.69,
+      "bidirectional": true
     },
     {
       "from": 14,
       "to": 6,
-      "distance": 11.91
+      "distance": 11.91,
+      "bidirectional": true
     },
     {
       "from": 15,
       "to": 14,
-      "distance": 11.89
+      "distance": 11.89,
+      "bidirectional": true
     },
     {
       "from": 16,
       "to": 15,
-      "distance": 13.71
+      "distance": 13.71,
+      "bidirectional": true
     },
     {
       "from": 17,
       "to": 9,
-      "distance": 10.19
+      "distance": 10.19,
+      "bidirectional": true
     },
     {
       "from": 18,
       "to": 17,
-      "distance": 8.82
+      "distance": 8.82,
+      "bidirectional": true
     },
     {
       "from": 19,
       "to": 11,
-      "distance": 12.48
+      "distance": 12.48,
+      "bidirectional": true
     },
     {
       "from": 20,
       "to": 12,
-      "distance": 10.68
+      "distance": 10.68,
+      "bidirectional": true
     },
     {
       "from": 21,
       "to": 13,
-      "distance": 11.05
+      "distance": 11.05,
+      "bidirectional": true
     },
     {
       "from": 22,
       "to": 21,
-      "distance": 10.61
+      "distance": 10.61,
+      "bidirectional": true
     },
     {
       "from": 23,
       "to": 15,
-      "distance": 11.23
+      "distance": 11.23,
+      "bidirectional": true
     },
     {
       "from": 24,
       "to": 16,
-      "distance": 10.24
+      "distance": 10.24,
+      "bidirectional": true
     },
     {
       "from": 25,
       "to": 0,
-      "distance": 7.87
+      "distance": 7.87,
+      "bidirectional": true
     },
     {
       "from": 26,
       "to": 25,
-      "distance": 10.72
+      "distance": 10.72,
+      "bidirectional": true
     },
     {
       "from": 27,
       "to": 26,
-      "distance": 10.77
+      "distance": 10.77,
+      "bidirectional": true
     },
     {
       "from": 28,
       "to": 20,
-      "distance": 14.36
+      "distance": 14.36,
+      "bidirectional": true
     },
     {
       "from": 29,
       "to": 28,
-      "distance": 9.35
+      "distance": 9.35,
+      "bidirectional": true
     },
     {
       "from": 30,
       "to": 22,
-      "distance": 9.71
+      "distance": 9.71,
+      "bidirectional": true
     },
     {
       "from": 31,
       "to": 30,
-      "distance": 12.39
+      "distance": 12.39,
+      "bidirectional": true
     },
     {
       "from": 32,
       "to": 24,
-      "distance": 12.95
+      "distance": 12.95,
+      "bidirectional": true
     },
     {
       "from": 33,
       "to": 0,
-      "distance": 8.11
+      "distance": 8.11,
+      "bidirectional": true
     },
     {
       "from": 34,
       "to": 33,
-      "distance": 9.31
+      "distance": 9.31,
+      "bidirectional": true
     },
     {
       "from": 35,
       "to": 27,
-      "distance": 11.73
+      "distance": 11.73,
+      "bidirectional": true
     },
     {
       "from": 36,
       "to": 35,
-      "distance": 10.91
+      "distance": 10.91,
+      "bidirectional": true
     },
     {
       "from": 37,
       "to": 36,
-      "distance": 15.21
+      "distance": 15.21,
+      "bidirectional": true
     },
     {
       "from": 38,
       "to": 37,
-      "distance": 9.78
+      "distance": 9.78,
+      "bidirectional": true
     },
     {
       "from": 39,
       "to": 38,
-      "distance": 11.07
+      "distance": 11.07,
+      "bidirectional": true
     },
     {
       "from": 40,
       "to": 32,
-      "distance": 10.5
+      "distance": 10.5,
+      "bidirectional": true
     },
     {
       "from": 41,
       "to": 33,
-      "distance": 11.59
+      "distance": 11.59,
+      "bidirectional": true
     },
     {
       "from": 42,
       "to": 41,
-      "distance": 9.99
+      "distance": 9.99,
+      "bidirectional": true
     },
     {
       "from": 43,
       "to": 35,
-      "distance": 10.89
+      "distance": 10.89,
+      "bidirectional": true
     },
     {
       "from": 44,
       "to": 43,
-      "distance": 9.68
+      "distance": 9.68,
+      "bidirectional": true
     },
     {
       "from": 45,
       "to": 37,
-      "distance": 7.52
+      "distance": 7.52,
+      "bidirectional": true
     },
     {
       "from": 46,
       "to": 45,
-      "distance": 11.08
+      "distance": 11.08,
+      "bidirectional": true
     },
     {
       "from": 47,
       "to": 46,
-      "distance": 12.99
+      "distance": 12.99,
+      "bidirectional": true
     },
     {
       "from": 48,
       "to": 47,
-      "distance": 8.5
+      "distance": 8.5,
+      "bidirectional": true
     },
     {
       "from": 49,
       "to": 41,
-      "distance": 9.82
+      "distance": 9.82,
+      "bidirectional": true
     },
     {
       "from": 50,
       "to": 42,
-      "distance": 11.44
+      "distance": 11.44,
+      "bidirectional": true
     },
     {
       "from": 51,
       "to": 43,
-      "distance": 12.77
+      "distance": 12.77,
+      "bidirectional": true
     },
     {
       "from": 52,
       "to": 44,
-      "distance": 10.79
+      "distance": 10.79,
+      "bidirectional": true
     },
     {
       "from": 53,
       "to": 52,
-      "distance": 11.85
+      "distance": 11.85,
+      "bidirectional": true
     },
     {
       "from": 54,
       "to": 53,
-      "distance": 9.01
+      "distance": 9.01,
+      "bidirectional": true
     },
     {
       "from": 55,
       "to": 47,
-      "distance": 13.66
+      "distance": 13.66,
+      "bidirectional": true
     },
     {
       "from": 56,
       "to": 48,
-      "distance": 10.32
+      "distance": 10.32,
+      "bidirectional": true
     },
     {
       "from": 57,
       "to": 49,
-      "distance": 15.41
+      "distance": 15.41,
+      "bidirectional": true
     },
     {
       "from": 58,
       "to": 50,
-      "distance": 8.07
+      "distance": 8.07,
+      "bidirectional": true
     },
     {
       "from": 59,
       "to": 51,
-      "distance": 12.4
+      "distance": 12.4,
+      "bidirectional": true
     },
     {
       "from": 0,
       "to": 34,
-      "distance": 14.36
+      "distance": 14.36,
+      "bidirectional": true
     },
     {
       "from": 1,
       "to": 10,
-      "distance": 19.94
+      "distance": 19.94,
+      "bidirectional": true
     },
     {
       "from": 2,
       "to": 11,
-      "distance": 14.51
+      "distance": 14.51,
+      "bidirectional": true
     },
     {
       "from": 3,
       "to": 11,
-      "distance": 11.19
+      "distance": 11.19,
+      "bidirectional": true
     },
     {
       "from": 4,
       "to": 12,
-      "distance": 14.68
+      "distance": 14.68,
+      "bidirectional": true
     },
     {
       "from": 5,
       "to": 13,
-      "distance": 12.34
+      "distance": 12.34,
+      "bidirectional": true
     },
     {
       "from": 7,
       "to": 15,
-      "distance": 12.54
+      "distance": 12.54,
+      "bidirectional": true
     },
     {
       "from": 8,
       "to": 16,
-      "distance": 13.73
+      "distance": 13.73,
+      "bidirectional": true
     },
     {
       "from": 8,
       "to": 15,
-      "distance": 17.2
+      "distance": 17.2,
+      "bidirectional": true
     },
     {
       "from": 9,
       "to": 18,
-      "distance": 12.75
+      "distance": 12.75,
+      "bidirectional": true
     },
     {
       "from": 9,
       "to": 10,
-      "distance": 13.01
+      "distance": 13.01,
+      "bidirectional": true
     },
     {
       "from": 10,
       "to": 18,
-      "distance": 11.31
+      "distance": 11.31,
+      "bidirectional": true
     },
     {
       "from": 14,
       "to": 22,
-      "distance": 11.91
+      "distance": 11.91,
+      "bidirectional": true
     },
     {
       "from": 17,
       "to": 25,
-      "distance": 11.52
+      "distance": 11.52,
+      "bidirectional": true
     },
     {
       "from": 18,
       "to": 26,
-      "distance": 11.65
+      "distance": 11.65,
+      "bidirectional": true
     },
     {
       "from": 19,
       "to": 20,
-      "distance": 11.19
+      "distance": 11.19,
+      "bidirectional": true
     },
     {
       "from": 19,
       "to": 27,
-      "distance": 12.98
+      "distance": 12.98,
+      "bidirectional": true
     },
     {
       "from": 20,
       "to": 21,
-      "distance": 11.59
+      "distance": 11.59,
+      "bidirectional": true
     },
     {
       "from": 21,
       "to": 29,
-      "distance": 11.07
+      "distance": 11.07,
+      "bidirectional": true
     },
     {
       "from": 23,
       "to": 24,
-      "distance": 10.7
+      "distance": 10.7,
+      "bidirectional": true
     },
     {
       "from": 23,
       "to": 31,
-      "distance": 12.65
+      "distance": 12.65,
+      "bidirectional": true
     },
     {
       "from": 28,
       "to": 36,
-      "distance": 12.05
+      "distance": 12.05,
+      "bidirectional": true
     },
     {
       "from": 29,
       "to": 30,
-      "distance": 11.19
+      "distance": 11.19,
+      "bidirectional": true
     },
     {
       "from": 31,
       "to": 32,
-      "distance": 13.73
+      "distance": 13.73,
+      "bidirectional": true
     },
     {
       "from": 34,
       "to": 35,
-      "distance": 12.1
+      "distance": 12.1,
+      "bidirectional": true
     },
     {
       "from": 34,
       "to": 26,
-      "distance": 13.22
+      "distance": 13.22,
+      "bidirectional": true
     },
     {
       "from": 36,
       "to": 44,
-      "distance": 11.19
+      "distance": 11.19,
+      "bidirectional": true
     },
     {
       "from": 37,
       "to": 46,
-      "distance": 15.2
+      "distance": 15.2,
+      "bidirectional": true
     },
     {
       "from": 38,
       "to": 46,
-      "distance": 11.32
+      "distance": 11.32,
+      "bidirectional": true
     },
     {
       "from": 39,
       "to": 40,
-      "distance": 12.59
+      "distance": 12.59,
+      "bidirectional": true
     },
     {
       "from": 39,
       "to": 47,
-      "distance": 13.17
+      "distance": 13.17,
+      "bidirectional": true
     },
     {
       "from": 40,
       "to": 48,
-      "distance": 14.48
+      "distance": 14.48,
+      "bidirectional": true
     },
     {
       "from": 42,
       "to": 43,
-      "distance": 13.52
+      "distance": 13.52,
+      "bidirectional": true
     },
     {
       "from": 45,
       "to": 38,
-      "distance": 12.55
+      "distance": 12.55,
+      "bidirectional": true
     },
     {
       "from": 46,
       "to": 54,
-      "distance": 12.08
+      "distance": 12.08,
+      "bidirectional": true
     },
     {
       "from": 49,
       "to": 50,
-      "distance": 13.35
+      "distance": 13.35,
+      "bidirectional": true
     },
     {
       "from": 49,
       "to": 42,
-      "distance": 15.36
+      "distance": 15.36,
+      "bidirectional": true
     },
     {
       "from": 51,
       "to": 52,
-      "distance": 12.52
+      "distance": 12.52,
+      "bidirectional": true
     },
     {
       "from": 53,
       "to": 45,
-      "distance": 13.41
+      "distance": 13.41,
+      "bidirectional": true
     },
     {
       "from": 54,
       "to": 55,
-      "distance": 16.02
+      "distance": 16.02,
+      "bidirectional": true
     },
     {
       "from": 55,
       "to": 56,
-      "distance": 11.13
+      "distance": 11.13,
+      "bidirectional": true
     },
     {
       "from": 55,
       "to": 48,
-      "distance": 15.65
+      "distance": 15.65,
+      "bidirectional": true
     },
     {
       "from": 56,
       "to": 47,
-      "distance": 15.05
+      "distance": 15.05,
+      "bidirectional": true
     },
     {
       "from": 57,
       "to": 58,
-      "distance": 12.15
+      "distance": 12.15,
+      "bidirectional": true
     },
     {
       "from": 57,
       "to": 50,
-      "distance": 17.08
+      "distance": 17.08,
+      "bidirectional": true
     },
     {
       "from": 58,
       "to": 59,
-      "distance": 13.32
+      "distance": 13.32,
+      "bidirectional": true
     },
     {
       "from": 59,
       "to": 50,
-      "distance": 15.35
+      "distance": 15.35,
+      "bidirectional": true
     }
   ]
 }
