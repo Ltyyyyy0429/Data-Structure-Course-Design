@@ -18,6 +18,8 @@ MPL_CACHE_DIR = RESULTS_DIR / ".matplotlib_cache"
 MPL_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 os.environ.setdefault("MPLCONFIGDIR", str(MPL_CACHE_DIR))
 
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib import font_manager
 import pandas as pd
@@ -25,7 +27,9 @@ from pandas.errors import EmptyDataError
 
 SCALES = ["small", "medium", "large", "extra_large"]
 STRATEGIES = ["nearest", "largest", "energy_aware_hybrid"]
+DIFFICULTIES = ["easy", "medium", "hard"]
 REQUIRED_COLUMNS = [
+    "difficulty",
     "scale",
     "strategy",
     "total_score",
@@ -33,93 +37,37 @@ REQUIRED_COLUMNS = [
     "timeout_tasks",
     "total_distance",
     "charging_times",
+    "low_battery_events",
+    "charging_requests",
+    "charging_queue_events",
+    "total_charging_wait_time",
+    "max_queue_length",
 ]
 
 
 def create_sample_data() -> pd.DataFrame:
-    rows = [
-        {
-            "scale": "small",
-            "strategy": "nearest",
-            "total_score": 860,
-            "completed_tasks": 12,
-            "timeout_tasks": 1,
-            "total_distance": 128.5,
-            "charging_times": 3,
-        },
-        {
-            "scale": "small",
-            "strategy": "largest",
-            "total_score": 910,
-            "completed_tasks": 11,
-            "timeout_tasks": 2,
-            "total_distance": 139.2,
-            "charging_times": 4,
-        },
-        {
-            "scale": "medium",
-            "strategy": "nearest",
-            "total_score": 1710,
-            "completed_tasks": 25,
-            "timeout_tasks": 3,
-            "total_distance": 285.7,
-            "charging_times": 7,
-        },
-        {
-            "scale": "medium",
-            "strategy": "largest",
-            "total_score": 1840,
-            "completed_tasks": 24,
-            "timeout_tasks": 4,
-            "total_distance": 309.4,
-            "charging_times": 8,
-        },
-        {
-            "scale": "large",
-            "strategy": "nearest",
-            "total_score": 2920,
-            "completed_tasks": 43,
-            "timeout_tasks": 6,
-            "total_distance": 524.9,
-            "charging_times": 13,
-        },
-        {
-            "scale": "large",
-            "strategy": "largest",
-            "total_score": 3180,
-            "completed_tasks": 41,
-            "timeout_tasks": 8,
-            "total_distance": 566.3,
-            "charging_times": 15,
-        },
-        {
-            "scale": "extra_large",
-            "strategy": "nearest",
-            "total_score": 4200,
-            "completed_tasks": 58,
-            "timeout_tasks": 10,
-            "total_distance": 780.0,
-            "charging_times": 20,
-        },
-        {
-            "scale": "extra_large",
-            "strategy": "largest",
-            "total_score": 4550,
-            "completed_tasks": 54,
-            "timeout_tasks": 12,
-            "total_distance": 840.0,
-            "charging_times": 22,
-        },
-        {
-            "scale": "extra_large",
-            "strategy": "energy_aware_hybrid",
-            "total_score": 3800,
-            "completed_tasks": 48,
-            "timeout_tasks": 6,
-            "total_distance": 720.0,
-            "charging_times": 18,
-        },
-    ]
+    rows = []
+    for difficulty_index, difficulty in enumerate(DIFFICULTIES):
+        for scale_index, scale in enumerate(SCALES):
+            for strategy_index, strategy in enumerate(STRATEGIES):
+                base = 600 + difficulty_index * 180 + scale_index * 420
+                rows.append(
+                    {
+                        "difficulty": difficulty,
+                        "scale": scale,
+                        "strategy": strategy,
+                        "total_score": base + strategy_index * 90,
+                        "completed_tasks": 8 + scale_index * 4 + strategy_index,
+                        "timeout_tasks": difficulty_index + strategy_index,
+                        "total_distance": 120 + scale_index * 95 + strategy_index * 28,
+                        "charging_times": difficulty_index * 2 + scale_index + strategy_index,
+                        "low_battery_events": difficulty_index * 5 + scale_index * 2 + strategy_index,
+                        "charging_requests": difficulty_index * 4 + scale_index * 2 + strategy_index,
+                        "charging_queue_events": difficulty_index + strategy_index,
+                        "total_charging_wait_time": difficulty_index * 12 + scale_index * 4 + strategy_index,
+                        "max_queue_length": difficulty_index + strategy_index,
+                    }
+                )
     return pd.DataFrame(rows)
 
 
@@ -196,24 +144,54 @@ def main() -> None:
 
     if language == "zh":
         chart_settings = [
-            ("total_score", "不同规模下两种策略总收益对比", "总收益", "total_score_comparison.png"),
+            ("total_score", "不同规模下策略总收益对比", "总收益", "total_score_comparison.png"),
             (
                 "completed_tasks",
-                "不同规模下两种策略完成任务数对比",
+                "不同规模下策略完成任务数对比",
                 "完成任务数",
                 "completed_tasks_comparison.png",
             ),
             (
                 "timeout_tasks",
-                "不同规模下两种策略超时任务数对比",
+                "不同规模下策略超时任务数对比",
                 "超时任务数",
                 "timeout_tasks_comparison.png",
             ),
             (
                 "total_distance",
-                "不同规模下两种策略总路径长度对比",
+                "不同规模下策略总路径长度对比",
                 "总路径长度",
                 "total_distance_comparison.png",
+            ),
+            (
+                "charging_times",
+                "不同规模下策略充电次数对比",
+                "充电次数",
+                "charging_times_comparison.png",
+            ),
+            (
+                "charging_requests",
+                "不同规模下策略充电需求次数对比",
+                "充电需求次数",
+                "charging_requests_comparison.png",
+            ),
+            (
+                "charging_queue_events",
+                "不同规模下策略排队次数对比",
+                "排队次数",
+                "charging_queue_events_comparison.png",
+            ),
+            (
+                "max_queue_length",
+                "不同规模下策略最大队列长度对比",
+                "最大队列长度",
+                "max_queue_length_comparison.png",
+            ),
+            (
+                "total_charging_wait_time",
+                "不同规模下策略充电等待总时间对比",
+                "等待总时间",
+                "total_charging_wait_time_comparison.png",
             ),
         ]
     else:
@@ -237,12 +215,58 @@ def main() -> None:
                 "total distance",
                 "total_distance_comparison.png",
             ),
+            (
+                "charging_times",
+                "Charging Times by Scale and Strategy",
+                "charging times",
+                "charging_times_comparison.png",
+            ),
+            (
+                "charging_requests",
+                "Charging Requests by Scale and Strategy",
+                "charging requests",
+                "charging_requests_comparison.png",
+            ),
+            (
+                "charging_queue_events",
+                "Charging Queue Events by Scale and Strategy",
+                "queue events",
+                "charging_queue_events_comparison.png",
+            ),
+            (
+                "max_queue_length",
+                "Max Queue Length by Scale and Strategy",
+                "max queue length",
+                "max_queue_length_comparison.png",
+            ),
+            (
+                "total_charging_wait_time",
+                "Total Charging Wait Time by Scale and Strategy",
+                "total wait time",
+                "total_charging_wait_time_comparison.png",
+            ),
         ]
 
     for metric, title, ylabel, file_name in chart_settings:
-        plot_grouped_bar(df, metric, title, ylabel, file_name)
+        plot_grouped_bar(df, metric, f"{title} (all difficulties mean)", ylabel, file_name)
+
+    for difficulty in DIFFICULTIES:
+        difficulty_df = df[df["difficulty"] == difficulty]
+        if difficulty_df.empty:
+            continue
+        for metric, title, ylabel, file_name in chart_settings:
+            difficulty_file_name = f"{difficulty}_{file_name}"
+            plot_grouped_bar(
+                difficulty_df,
+                metric,
+                f"{title} ({difficulty})",
+                ylabel,
+                difficulty_file_name,
+            )
 
     print(f"Loaded data from: {CSV_PATH}")
+    print(f"Rows: {len(df)}")
+    print(f"Difficulties: {sorted(df['difficulty'].unique())}")
     print(f"Figures saved to: {FIGURE_DIR}")
 
 

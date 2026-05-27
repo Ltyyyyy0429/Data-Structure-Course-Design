@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 
 class Dispatcher:
     def __init__(self, pathfinder: RealPathfinder, strategy_name: str = "energy_aware_hybrid",
-                 consume_rate: float = None):
+                 consume_rate: float = None, load_capacity: float = 1000.0):
         """
         初始化调度中心
         :param pathfinder: RealPathfinder 实例 (用于计算最短路径)
@@ -18,6 +18,7 @@ class Dispatcher:
         """
         self.pathfinder = pathfinder
         self.strategy_name = strategy_name
+        self.load_capacity = load_capacity
 
         # === 能量感知综合策略专用的基础属性和超参数 ===
         self.consume_rate = consume_rate if consume_rate is not None else 0.5
@@ -28,6 +29,24 @@ class Dispatcher:
         self.gamma = 0.5   # 距离惩罚系数
         self.delta = 50.0  # 电量风险惩罚系数
         self.epsilon = 10.0 # 充电站排队惩罚系数
+
+    def _as_float(self, value, default: float = 0.0) -> float:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+
+    def _is_load_feasible(self, vehicle: dict, task: dict) -> bool:
+        """Return True if the vehicle can carry this task without overloading."""
+        current_load = self._as_float(vehicle.get('load', 0), 0.0)
+        task_weight = self._as_float(task.get('weight', 0), 0.0)
+        capacity = self._as_float(
+            vehicle.get('max_load',
+                        vehicle.get('load_capacity',
+                                    vehicle.get('capacity', self.load_capacity))),
+            self.load_capacity,
+        )
+        return current_load + task_weight <= capacity
 
     def dispatch(self, state: dict) -> list:
         """
@@ -65,7 +84,15 @@ class Dispatcher:
         for vehicle in idle_vehicles:
             if not unassigned_tasks:
                 break
-            task = unassigned_tasks.pop(0)
+
+            task = None
+            for candidate in unassigned_tasks:
+                if self._is_load_feasible(vehicle, candidate):
+                    task = candidate
+                    break
+            if task is None:
+                continue
+
             start_node = int(vehicle.get('current_node', 0))
             target_node = int(task.get('node_id', 0))
 
@@ -80,6 +107,7 @@ class Dispatcher:
                 'action': 'assign',
                 'path': path
             })
+            unassigned_tasks.remove(task)
         return actions
 
     # ==========================================
@@ -98,6 +126,9 @@ class Dispatcher:
             start_node = int(vehicle.get('current_node', 0))
 
             for task in unassigned_tasks:
+                if not self._is_load_feasible(vehicle, task):
+                    continue
+
                 target_node = int(task.get('node_id', 0))
 
                 try:
@@ -126,7 +157,8 @@ class Dispatcher:
     # ==========================================
     def _energy_aware_hybrid_dispatch(self, idle_vehicles, unassigned_tasks, state) -> list:
         actions = []
-        current_time = state.get('current_time', 0)
+        metrics = state.get('metrics', {})
+        current_time = state.get('current_time', metrics.get('current_time', 0))
         chargers = state.get('charging_stations', state.get('chargers', []))
 
         assigned_task_ids = set()
@@ -138,11 +170,13 @@ class Dispatcher:
 
             veh_node = int(vehicle.get('current_node', 0))
             veh_battery = vehicle.get('battery', 100)
-            veh_max_battery = vehicle.get('max_battery', 100)
-            battery_ratio = veh_battery / veh_max_battery
+            veh_max_battery = max(vehicle.get('max_battery', veh_battery), 1)
+            battery_ratio = max(0.0, min(1.0, veh_battery / veh_max_battery))
 
             for task in unassigned_tasks:
                 if task['id'] in assigned_task_ids:
+                    continue
+                if not self._is_load_feasible(vehicle, task):
                     continue
 
                 task_node = int(task.get('node_id', 0))
