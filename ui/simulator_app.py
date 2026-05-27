@@ -318,6 +318,16 @@ def main() -> None:
                         simulator = reset_simulator(strategy, current_difficulty, current_scale)
                         toast_message = "Hybrid strategy is not available"
                     toast_until = pygame.time.get_ticks() / 1000.0 + 1.8
+                elif event.key == pygame.K_4:
+                    strategy = "genetic_algorithm"
+                    try:
+                        simulator = reset_simulator(strategy, current_difficulty, current_scale)
+                        toast_message = "Reset with strategy: genetic_algorithm"
+                    except Exception:
+                        strategy = "nearest"
+                        simulator = reset_simulator(strategy, current_difficulty, current_scale)
+                        toast_message = "GA strategy is not available"
+                    toast_until = pygame.time.get_ticks() / 1000.0 + 1.8
                 elif event.key in (pygame.K_s, pygame.K_m, pygame.K_l, pygame.K_x):
                     key_to_scale = {
                         pygame.K_s: "small",

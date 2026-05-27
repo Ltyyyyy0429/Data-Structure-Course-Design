@@ -21,7 +21,7 @@ class Dispatcher:
         self.load_capacity = load_capacity
 
        
-        self.consume_rate = 0.5      # 每单位距离耗电量
+        self.consume_rate = consume_rate if consume_rate is not None else 0.5
         self.safety_margin = 1.0     # 电池安全余量 
         
         # --- 归一化得分权重配置 ---
@@ -70,6 +70,12 @@ class Dispatcher:
             return self._nearest_dispatch(idle_vehicles, unassigned_tasks)
         elif self.strategy_name == "energy_aware_hybrid":
             return self._energy_aware_hybrid_dispatch(idle_vehicles, unassigned_tasks, state)
+        elif self.strategy_name == "genetic_algorithm":
+            import strategy_ga
+            return strategy_ga.ga_dispatch(
+                idle_vehicles, unassigned_tasks, self.pathfinder, state,
+                consume_rate=self.consume_rate, load_capacity=self.load_capacity,
+            )
         else:
             return []
 
