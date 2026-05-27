@@ -90,8 +90,11 @@ class Simulator:
 
         print(f"[Simulator] 图已加载: {len(self.nodes)} 节点, {len(self.edges)} 边")
 
+        self.depot_ids = [n.id for n in self.nodes.values() if n.type == 'depot']
+
         self.vehicles: Dict[str, Vehicle] = {}
         self.vehicle_accumulated_distance: Dict[str, float] = {}
+        self.task_travel_distance: Dict[str, float] = {}
         self.saved_tasks: Dict[str, Optional[str]] = {}
         self.vehicle_active_task: Dict[str, Optional[str]] = {}
         self._init_vehicles()
@@ -274,8 +277,20 @@ class Simulator:
             if vehicle.status != VehicleStatus.MOVING:
                 continue
 
-            # ========== 低电量检测（优先处理） ==========
-            if vehicle.battery < self.low_battery_threshold:
+            # ========== 低电量检测（可达性检查，优先处理） ==========
+            remaining_to_target = max(
+                0.0,
+                self._get_distance(vehicle.current_node, vehicle.target_node)
+                - self.vehicle_accumulated_distance[vehicle.id],
+            )
+            nearest_cs, charger_dist = self.pathfinder.nearest_charging_station(
+                vehicle.target_node
+            )
+            if nearest_cs is not None:
+                required_energy = (remaining_to_target + charger_dist) * self.energy_per_km
+            else:
+                required_energy = remaining_to_target * self.energy_per_km * 1.5
+            if vehicle.battery < required_energy:
                 # 找最近充电站
                 nearest_cs = self._find_nearest_charging_station(vehicle.current_node)
                 if nearest_cs is not None and nearest_cs != vehicle.current_node:
@@ -452,6 +467,17 @@ class Simulator:
         nearest_int, _ = self.pathfinder.nearest_charging_station(from_node)
         return nearest_int if nearest_int is not None else None
     
+    def _can_reach_and_return(self, vehicle, task_node_id: int) -> bool:
+        """检查车辆是否有足够电量到达任务节点并安全返回充电站或仓库."""
+        _, d1 = self.pathfinder.find_path_and_distance(vehicle.current_node, task_node_id)
+        nearest_cs, d2 = self.pathfinder.nearest_charging_station(task_node_id)
+        if self.depot_ids:
+            _, d3 = self.pathfinder.find_path_and_distance(task_node_id, self.depot_ids[0])
+        else:
+            d3 = float("inf")
+        recovery_dist = min(d2, d3) if nearest_cs is not None else d3
+        return vehicle.battery >= (d1 + recovery_dist) * self.energy_per_km
+
     def _check_tasks_completion(self):
         completed_tasks = []
         
@@ -471,7 +497,8 @@ class Simulator:
         for task, vehicle in completed_tasks:
             task.status = TaskStatus.COMPLETED
             time_early = max(0, task.deadline - self.current_time)
-            score = 100 + time_early * 2
+            task_dist = self.task_travel_distance.pop(task.id, 0.0)
+            score = 100 + time_early * 2 - task_dist * 0.3
             self.metrics.total_score += score
             self.metrics.completed_tasks += 1
             
@@ -491,6 +518,7 @@ class Simulator:
                 task.status = TaskStatus.TIMEOUT
                 self.metrics.total_score -= 100
                 self.metrics.timeout_tasks += 1
+                self.task_travel_distance.pop(task.id, None)
                 for vehicle_id, active_task_id in list(self.vehicle_active_task.items()):
                     if active_task_id == task.id:
                         self.vehicle_active_task[vehicle_id] = None
@@ -563,6 +591,12 @@ class Simulator:
                     f"({vehicle.load:.1f}+{task.weight:.1f}>{self.load_capacity:.1f}kg)"
                 )
                 continue
+            if not self._can_reach_and_return(vehicle, task.node_id):
+                print(
+                    f"[Simulator] 警告: {vehicle.id} 电量不足({vehicle.battery:.1f}kWh) "
+                    f"无法安全执行任务 {task.id}(node={task.node_id})"
+                )
+                continue
 
             task.status = TaskStatus.ASSIGNED
             vehicle.target_node = task.node_id
@@ -581,7 +615,9 @@ class Simulator:
             print(f"[Simulator] 分配任务 {task.id} 给 {vehicle.id}, 从 {vehicle.current_node} 到 {task.node_id}, 路径长度: {len(vehicle.path)}")
 
             self.vehicle_accumulated_distance[vehicle.id] = 0.0
-    
+            _, task_dist = self.pathfinder.find_path_and_distance(vehicle.current_node, task.node_id)
+            self.task_travel_distance[task.id] = task_dist
+
     def _get_path(self, from_node: int, to_node: int) -> List[int]:
         path, _ = self.pathfinder.find_path_and_distance(from_node, to_node)
         return path
