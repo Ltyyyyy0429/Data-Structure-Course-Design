@@ -27,6 +27,12 @@ from pandas.errors import EmptyDataError
 
 SCALES = ["small", "medium", "large", "extra_large"]
 STRATEGIES = ["nearest", "largest", "energy_aware_hybrid", "genetic_algorithm"]
+STRATEGY_LABELS = {
+    "nearest": "nearest",
+    "largest": "largest",
+    "energy_aware_hybrid": "hybrid",
+    "genetic_algorithm": "GA",
+}
 DIFFICULTIES = ["easy", "medium", "hard"]
 EXPECTED_ROWS = len(SCALES) * len(DIFFICULTIES) * len(STRATEGIES)
 REQUIRED_COLUMNS = [
@@ -123,6 +129,17 @@ def setup_font() -> str:
     return "en"
 
 
+def clean_old_figures() -> list[str]:
+    """Remove old PNG outputs so report figures cannot be mixed with stale files."""
+
+    FIGURE_DIR.mkdir(parents=True, exist_ok=True)
+    removed_files = []
+    for figure_path in sorted(FIGURE_DIR.glob("*.png")):
+        removed_files.append(figure_path.name)
+        figure_path.unlink()
+    return removed_files
+
+
 def plot_grouped_bar(df: pd.DataFrame, metric: str, title: str, ylabel: str, file_name: str) -> None:
     pivot = (
         df.pivot_table(index="scale", columns="strategy", values=metric, aggfunc="mean")
@@ -145,7 +162,7 @@ def plot_grouped_bar(df: pd.DataFrame, metric: str, title: str, ylabel: str, fil
         offset = (index - (num_strategies - 1) / 2) * bar_width
         values = pivot[strategy] if strategy in pivot.columns else [0] * len(SCALES)
         bar_positions = [x + offset for x in x_positions]
-        plt.bar(bar_positions, values, width=bar_width, label=strategy,
+        plt.bar(bar_positions, values, width=bar_width, label=STRATEGY_LABELS.get(strategy, strategy),
                 color=colors.get(strategy, "#999999"))
 
     plt.title(title)
@@ -160,7 +177,7 @@ def plot_grouped_bar(df: pd.DataFrame, metric: str, title: str, ylabel: str, fil
 
 def main() -> None:
     df = load_results()
-    FIGURE_DIR.mkdir(parents=True, exist_ok=True)
+    removed_files = clean_old_figures()
     language = setup_font()
 
     if language == "zh":
@@ -268,8 +285,10 @@ def main() -> None:
             ),
         ]
 
+    generated_files = []
     for metric, title, ylabel, file_name in chart_settings:
         plot_grouped_bar(df, metric, f"{title} (all difficulties mean)", ylabel, file_name)
+        generated_files.append(file_name)
 
     for difficulty in DIFFICULTIES:
         difficulty_df = df[df["difficulty"] == difficulty]
@@ -284,11 +303,17 @@ def main() -> None:
                 ylabel,
                 difficulty_file_name,
             )
+            generated_files.append(difficulty_file_name)
 
     print(f"Loaded data from: {CSV_PATH}")
     print(f"Rows: {len(df)}")
     print(f"Difficulties: {sorted(df['difficulty'].unique())}")
     print(f"Strategies: {list(STRATEGIES)}")
+    print(f"Legend labels: {STRATEGY_LABELS}")
+    print(f"Removed old PNG figures: {len(removed_files)}")
+    print(f"Generated PNG figures: {len(generated_files)}")
+    for file_name in generated_files:
+        print(f"- {file_name}")
     print(f"Figures saved to: {FIGURE_DIR}")
 
 

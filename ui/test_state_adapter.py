@@ -69,9 +69,14 @@ def test_b_style_state():
                 "id": "v1",
                 "current_node": "depot_1",
                 "battery": 100,
+                "max_battery": 120,
                 "load": 0,
+                "max_load": 1000,
+                "load_capacity": 1000,
                 "status": "idle",
                 "target_node": "",
+                "charging_target": "cs_1",
+                "current_task_id": "t1",
                 "path": [],
             },
         ],
@@ -102,6 +107,11 @@ def test_b_style_state():
     assert_true("from_node" not in state["edges"][0], "edge should not keep from_node field")
     assert_true(state["vehicles"][0]["x"] == 0, "vehicle should get x from current_node")
     assert_true(state["vehicles"][0]["y"] == 0, "vehicle should get y from current_node")
+    assert_true(state["vehicles"][0]["max_battery"] == 120, "vehicle should keep max_battery")
+    assert_true(state["vehicles"][0]["max_load"] == 1000, "vehicle should keep max_load")
+    assert_true(state["vehicles"][0]["load_capacity"] == 1000, "vehicle should keep load_capacity")
+    assert_true(state["vehicles"][0]["charging_target"] == "cs_1", "vehicle should keep charging_target")
+    assert_true(state["vehicles"][0]["current_task_id"] == "t1", "vehicle should keep current_task_id")
     assert_true(state["tasks"][0]["x"] == 10, "task should get x from node_id")
     assert_true(state["charging_stations"][0]["queue"] == 2, "queue_length should become queue")
 
