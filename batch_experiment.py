@@ -2,10 +2,13 @@
 
 import json
 import csv
+import contextlib
+import io
 import math
 import os
 import random
 import sys
+import traceback
 
 from simulator import Simulator
 from simulator.pathfinder_adapter import RealPathfinder
@@ -275,7 +278,7 @@ def run_single_experiment(scale: str, strategy: str, duration: int = 180,
     return state['metrics']
 
 
-def run_batch_experiment(difficulty: str = "easy"):
+def run_batch_experiment(difficulty: str = "easy", quiet: bool = False):
     """运行批量实验.
 
     difficulty="all" runs easy / medium / hard and writes one unified CSV.
@@ -294,6 +297,8 @@ def run_batch_experiment(difficulty: str = "easy"):
     print("批量实验开始")
     print(f"仿真时长: 180分钟 (3小时) | 难度: {difficulties}")
     print(f"规模: {SCALES} | 策略: {STRATEGIES}")
+    if quiet:
+        print("输出模式: quiet，仅显示每组简要进度和最终汇总")
     print("=" * 60)
 
     # Ensure all maps exist
@@ -301,16 +306,30 @@ def run_batch_experiment(difficulty: str = "easy"):
 
     failures = []
 
+    total_runs = expected_run_count(difficulties)
+    run_index = 0
+
     for current_difficulty in difficulties:
         for scale in SCALES:
             for strategy in STRATEGIES:
+                run_index += 1
                 try:
-                    metrics = run_single_experiment(
-                        scale,
-                        strategy,
-                        duration=180,
-                        difficulty=current_difficulty,
-                    )
+                    if quiet:
+                        print(f"  [{run_index:02d}/{total_runs}] {current_difficulty}/{scale}/{strategy}")
+                        with contextlib.redirect_stdout(io.StringIO()):
+                            metrics = run_single_experiment(
+                                scale,
+                                strategy,
+                                duration=180,
+                                difficulty=current_difficulty,
+                            )
+                    else:
+                        metrics = run_single_experiment(
+                            scale,
+                            strategy,
+                            duration=180,
+                            difficulty=current_difficulty,
+                        )
                     results.append({
                         "difficulty": current_difficulty,
                         "scale": scale,
@@ -328,7 +347,6 @@ def run_batch_experiment(difficulty: str = "easy"):
                     })
                 except Exception as e:
                     print(f"  错误: {current_difficulty}/{scale}/{strategy} - {e}")
-                    import traceback
                     traceback.print_exc()
                     failures.append((current_difficulty, scale, strategy, str(e)))
 
@@ -391,6 +409,27 @@ def ensure_all_maps():
             return  # generate_all_maps 一次性全部生成
 
 
+def parse_cli_args(argv: list[str]) -> tuple[str, bool]:
+    """Parse difficulty and optional --quiet without adding dependencies."""
+
+    difficulty = "all"
+    quiet = False
+    difficulty_set = False
+
+    for arg in argv[1:]:
+        if arg == "--quiet":
+            quiet = True
+        elif arg.startswith("--"):
+            raise ValueError(f"未知参数: {arg}. 可选参数: --quiet")
+        elif not difficulty_set:
+            difficulty = arg
+            difficulty_set = True
+        else:
+            raise ValueError(f"多余参数: {arg}. 用法: python3 batch_experiment.py [all|easy|medium|hard] [--quiet]")
+
+    return difficulty, quiet
+
+
 if __name__ == "__main__":
-    difficulty = sys.argv[1] if len(sys.argv) > 1 else "all"
-    run_batch_experiment(difficulty)
+    selected_difficulty, quiet_mode = parse_cli_args(sys.argv)
+    run_batch_experiment(selected_difficulty, quiet=quiet_mode)

@@ -34,11 +34,13 @@ python3 ui/simulator_app.py --scale large --difficulty hard --strategy energy_aw
 python3 ui/simulator_app.py --scale large --difficulty hard --strategy energy_aware_hybrid --demo-low-battery
 ```
 
-`ui/simulator_app.py` 用于可视化演示，支持 `--scale small|medium|large|extra_large`、`--difficulty easy|medium|hard`、`--strategy nearest|largest|energy_aware_hybrid|genetic_algorithm`。`--demo-low-battery` 会人为降低第一辆车电量，方便录屏时观察充电逻辑；正式实验结果以 `batch_experiment.py` 生成的 CSV 为准。
+`ui/pygame_app.py` 是假数据 UI / 备用界面检查入口，不依赖仿真引擎。`ui/simulator_app.py` 是答辩展示推荐入口，连接当前 Simulator，支持 `--scale small|medium|large|extra_large`、`--difficulty easy|medium|hard`、`--strategy nearest|largest|energy_aware_hybrid|genetic_algorithm`。`--demo-low-battery` 会人为降低第一辆车电量，方便录屏时观察充电逻辑；正式实验结果以 `batch_experiment.py` 生成的 `results/experiment_results.csv` 为准。
 
 键盘操作：
 - `SPACE`：暂停 / 继续
 - `1`：切换 nearest | `2`：切换 largest | `3`：切换 energy_aware_hybrid | `4`：切换 genetic_algorithm
+- `D`：循环切换 easy / medium / hard 难度
+- `S`：small | `M`：medium | `L`：large | `X`：extra_large
 - `R`：重置 | `ESC`：退出
 
 运行批量实验：
@@ -55,7 +57,7 @@ python3 batch_experiment.py hard      # 仅 HARD 难度，16 组
 python3 visualization/plot_results.py
 ```
 
-`plot_results.py` 不再自动生成示例数据。请先运行 `python3 batch_experiment.py all`，生成正式的 `results/experiment_results.csv` 后再画图。
+`plot_results.py` 不再自动生成示例数据。请先运行 `python3 batch_experiment.py all`，生成正式的 `results/experiment_results.csv` 后再画图。CSV 中策略原值保持 `nearest`、`largest`、`energy_aware_hybrid`、`genetic_algorithm`；图表图例使用短标签 `nearest`、`largest`、`hybrid`、`GA`。
 
 运行测试：
 
@@ -189,9 +191,26 @@ GA 适应度与 Hybrid 打分使用统一的百分制公式：收益归一化用
 
 ### Pygame UI
 
-- `ui/pygame_app.py`：假数据原型，独立运行
-- `ui/simulator_app.py`：真实 UI，连接 Simulator，支持 `--scale`、`--difficulty`、`--strategy` 和 `--demo-low-battery` 参数
+- `ui/pygame_app.py`：假数据 UI / 备用界面检查入口，独立运行，不依赖 Simulator
+- `ui/simulator_app.py`：真实仿真 UI，连接 Simulator，用于答辩演示和录屏
 - `ui/state_adapter.py`：`normalize_state()` 统一命名差异（`depot`→`warehouse`、`from_node`→`from` 等），补充缺失坐标
+
+推荐展示命令：
+
+```bash
+python3 ui/pygame_app.py
+python3 ui/simulator_app.py
+python3 ui/simulator_app.py --scale large --difficulty hard --strategy energy_aware_hybrid
+python3 ui/simulator_app.py --scale large --difficulty hard --strategy energy_aware_hybrid --demo-low-battery
+```
+
+`ui/simulator_app.py` 支持四种规模、三种难度和四种策略：
+
+- 规模：`small`, `medium`, `large`, `extra_large`
+- 难度：`easy`, `medium`, `hard`
+- 策略：`nearest`, `largest`, `energy_aware_hybrid`, `genetic_algorithm`
+
+其中 `--demo-low-battery` 只用于可视化演示，方便观察低电量与充电行为；正式实验数据不以 UI 演示为准。
 
 ### Matplotlib 图表
 
@@ -199,7 +218,7 @@ GA 适应度与 Hybrid 打分使用统一的百分制公式：收益归一化用
 python3 visualization/plot_results.py   # 读取 results/experiment_results.csv 生成 PNG
 ```
 
-图表输出到 `results/figures/`，覆盖总收益、完成任务数、超时任务数、总路径长度、充电次数、充电需求、排队次数、最大队列长度、总等待时间。图表脚本只读取正式 CSV，不会自动生成示例数据；如果 CSV 缺失、列缺失或不是 48 行，会提示先运行完整批量实验。
+图表输出到 `results/figures/`，覆盖总收益、完成任务数、超时任务数、总路径长度、充电次数、充电需求、排队次数、最大队列长度、总等待时间。图表脚本只读取正式 CSV，不会自动生成示例数据；如果 CSV 缺失、列缺失或不是 48 行，会提示先运行完整批量实验。每次生成前会清理旧 PNG，避免报告误用旧图。
 
 ### 批量实验
 
@@ -209,9 +228,11 @@ python3 visualization/plot_results.py   # 读取 results/experiment_results.csv 
 python3 batch_experiment.py all
 ```
 
-实验维度：4 scales x 3 difficulties x 4 strategies = 48 runs，默认仿真 180 分钟。
+实验维度：4 scales × 3 difficulties × 4 strategies = 48 runs，默认仿真 180 分钟。
 
 统一输出 `results/experiment_results.csv`，字段包括：`difficulty`, `scale`, `strategy`, `total_score`, `completed_tasks`, `timeout_tasks`, `total_distance`, `charging_times`, `low_battery_events`, `charging_requests`, `charging_queue_events`, `total_charging_wait_time`, `max_queue_length`。
+
+正式报告和图表以 `results/experiment_results.csv` 为准；`ui/simulator_app.py` 主要用于展示系统运行过程、车辆状态、任务点、充电站压力和策略切换效果。
 
 ## State 字典（模块间唯一契约）
 
