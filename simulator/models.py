@@ -9,6 +9,7 @@ class VehicleStatus(Enum):
     IDLE = "idle"           # 空闲
     MOVING = "moving"       # 移动中
     CHARGING = "charging"   # 充电中
+    WAITING_FOR_CHARGE = "waiting_for_charge"  # 等待充电桩
 
 
 class TaskStatus(Enum):
@@ -85,3 +86,8 @@ class Metrics:
     timeout_tasks: int
     total_distance: float      # 所有车辆累计行驶距离 (km)
     charging_times: int        # 累计充电次数
+    low_battery_events: int = 0
+    charging_requests: int = 0
+    charging_queue_events: int = 0
+    total_charging_wait_time: float = 0.0
+    max_queue_length: int = 0

@@ -43,11 +43,13 @@ class VehicleConfig:
     count_medium: int = 3
     count_large: int = 3
     count_extra_large: int = 3
-    battery_capacity_kwh: float = 500.0
-    energy_per_km: float = 0.3
+    battery_capacity_kwh: float = 120.0
+    energy_per_km: float = 0.6
     speed_kmh: float = 40.0
     load_capacity_kg: float = 1000.0
-    low_battery_threshold_kwh: float = 80.0
+    low_battery_threshold_ratio: float = 0.30
+    initial_battery_min_ratio: float = 0.90
+    initial_battery_max_ratio: float = 1.00
 
     def count_for_scale(self, scale: str) -> int:
         return {
@@ -56,6 +58,19 @@ class VehicleConfig:
             "large": self.count_large,
             "extra_large": self.count_extra_large,
         }.get(scale, 3)
+
+    def low_battery_threshold_kwh(self) -> float:
+        """Low-battery threshold derived from battery capacity."""
+        return self.battery_capacity_kwh * self.low_battery_threshold_ratio
+
+    def initial_battery_range_kwh(self) -> Tuple[float, float]:
+        """Initial battery range derived from capacity and ratio bounds."""
+        min_ratio = max(0.0, min(1.0, self.initial_battery_min_ratio))
+        max_ratio = max(min_ratio, min(1.0, self.initial_battery_max_ratio))
+        return (
+            self.battery_capacity_kwh * min_ratio,
+            self.battery_capacity_kwh * max_ratio,
+        )
 
 
 @dataclass
@@ -77,7 +92,7 @@ class TaskConfig:
 class ChargingConfig:
     """Charging infrastructure parameters."""
 
-    charging_rate_kwh_per_hour: float = 100.0
+    charging_rate_kwh_per_hour: float = 50.0
     ports_per_station: int = 2
 
 
@@ -140,20 +155,30 @@ def _map_config_for(scale: str, difficulty: DifficultyPreset) -> MapConfig:
 
 def _vehicle_config_for(difficulty: DifficultyPreset) -> VehicleConfig:
     if difficulty == DifficultyPreset.EASY:
-        return VehicleConfig()
+        return VehicleConfig(
+            battery_capacity_kwh=120.0,
+            energy_per_km=0.35,
+            low_battery_threshold_ratio=0.20,
+            initial_battery_min_ratio=0.90,
+            initial_battery_max_ratio=1.00,
+        )
     if difficulty == DifficultyPreset.MEDIUM:
         return VehicleConfig(
-            battery_capacity_kwh=300.0,
-            energy_per_km=0.5,
-            low_battery_threshold_kwh=60.0,
+            battery_capacity_kwh=100.0,
+            energy_per_km=0.60,
+            low_battery_threshold_ratio=0.30,
+            initial_battery_min_ratio=0.70,
+            initial_battery_max_ratio=1.00,
             count_small=3, count_medium=3, count_large=3, count_extra_large=3,
         )
     # HARD
     return VehicleConfig(
         count_small=2, count_medium=3, count_large=4, count_extra_large=5,
-        battery_capacity_kwh=200.0,
-        energy_per_km=0.7,
-        low_battery_threshold_kwh=45.0,
+        battery_capacity_kwh=80.0,
+        energy_per_km=0.90,
+        low_battery_threshold_ratio=0.40,
+        initial_battery_min_ratio=0.45,
+        initial_battery_max_ratio=0.80,
     )
 
 
@@ -162,19 +187,19 @@ def _task_config_for(difficulty: DifficultyPreset) -> TaskConfig:
         return TaskConfig()
     if difficulty == DifficultyPreset.MEDIUM:
         return TaskConfig(
-            spawn_probability=0.50,
-            deadline_min=45.0,
+            spawn_probability=0.35,
+            deadline_min=65.0,
             deadline_max=90.0,
             weight_min_kg=80.0,
-            burst_probability=0.10,
+            burst_probability=0.08,
         )
     # HARD
     return TaskConfig(
-        spawn_probability=0.70,
-        deadline_min=25.0,
+        spawn_probability=0.40,
+        deadline_min=45.0,
         deadline_max=60.0,
         weight_min_kg=100.0,
-        burst_probability=0.20,
+        burst_probability=0.12,
         burst_count_min=2,
         burst_count_max=4,
     )
@@ -182,11 +207,11 @@ def _task_config_for(difficulty: DifficultyPreset) -> TaskConfig:
 
 def _charging_config_for(difficulty: DifficultyPreset) -> ChargingConfig:
     if difficulty == DifficultyPreset.EASY:
-        return ChargingConfig()
+        return ChargingConfig(charging_rate_kwh_per_hour=50.0, ports_per_station=2)
     if difficulty == DifficultyPreset.MEDIUM:
-        return ChargingConfig(charging_rate_kwh_per_hour=75.0, ports_per_station=2)
+        return ChargingConfig(charging_rate_kwh_per_hour=45.0, ports_per_station=2)
     # HARD
-    return ChargingConfig(charging_rate_kwh_per_hour=50.0, ports_per_station=1)
+    return ChargingConfig(charging_rate_kwh_per_hour=35.0, ports_per_station=1)
 
 
 # ---------------------------------------------------------------------------
