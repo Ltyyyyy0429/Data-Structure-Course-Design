@@ -1,8 +1,10 @@
-"""仿真引擎核心类 - 支持难度配置参数化"""
+"""仿真引擎核心类 - 完整修复版（卸货+电量预判+统计指标）"""
 
 from typing import Dict, List, Any, Optional, TYPE_CHECKING
 import random
 import math
+import json
+from pathlib import Path
 from .models import (
     Node, Edge, Vehicle, Task, ChargingStation, Metrics,
     VehicleStatus, TaskStatus
@@ -16,10 +18,28 @@ if TYPE_CHECKING:
     from core.difficulty import DifficultyConfig
 
 
+class CityGraphAdapter:
+    """适配 CityGraph 到 RealPathfinder 接口"""
+    def __init__(self, city_graph):
+        self.graph = city_graph
+    
+    def find_path_and_distance(self, start, end):
+        return self.graph.shortest_path(start, end)
+    
+    def nearest_charging_station(self, start):
+        return self.graph.nearest_node(start, 'charging')
+    
+    def get_state_nodes(self):
+        return self.graph.to_state_nodes()
+    
+    def get_state_edges(self):
+        return self.graph.to_state_edges()
+
+
 class Simulator:
     # ========== 车辆参数（默认值，可被 config 覆盖）==========
     VEHICLE_SPEED = 40.0  # km/h
-    VEHICLE_BATTERY_CAPACITY = 120.0  # kWh
+    VEHICLE_BATTERY_CAPACITY = 80.0  # kWh
     VEHICLE_LOAD_CAPACITY = 1000.0  # kg
     ENERGY_PER_KM = 0.6  # kWh/km
     CHARGING_RATE = 50.0  # kWh/h
@@ -28,8 +48,8 @@ class Simulator:
     INITIAL_BATTERY_MIN_RATIO = 0.90
     INITIAL_BATTERY_MAX_RATIO = 1.00
 
-    def __init__(self, graph_data: dict, scale: str, strategy: str,
-                 pathfinder: RealPathfinder = None, config: "DifficultyConfig" = None):
+    def __init__(self, graph_data: dict = None, scale: str = "small", strategy: str = "nearest",
+                 map_file: str = None, pathfinder: RealPathfinder = None, config: "DifficultyConfig" = None):
         self.nodes: Dict[int, Node] = {}
         self.edges: Dict[str, Edge] = {}
 
@@ -47,7 +67,6 @@ class Simulator:
             self.ports_per_station = cc.ports_per_station
             self.low_battery_threshold = vc.low_battery_threshold_kwh()
             self.initial_battery_min, self.initial_battery_max = vc.initial_battery_range_kwh()
-            # Task params
             self.task_spawn_probability = tc.spawn_probability
             self.task_gen_interval = tc.spawn_interval_minutes
             self.task_deadline_min = tc.deadline_min
@@ -74,19 +93,99 @@ class Simulator:
             self.task_weight_max = 500.0
             self._task_config = None
 
-        # 解析节点（ID 已经是 int）
-        for node_data in graph_data.get('nodes', []):
-            node = Node(**node_data)
-            self.nodes[node.id] = node
+         # ========== 根据规模调整车辆数 ==========
+        if scale == "small":
+            self.vehicle_count = 5
+        elif scale == "medium":
+            self.vehicle_count = 10
+        elif scale == "large":
+            self.vehicle_count = 15
 
-        # 解析边
-        for edge_data in graph_data.get('edges', []):
-            edge = Edge(**edge_data)
-            key = f"{edge.from_node}->{edge.to_node}"
-            self.edges[key] = edge
+        # ========== 初始化 pathfinder 和 nodes/edges ==========
+        if pathfinder is not None:
+            # 方式1：直接传入 pathfinder
+            self.pathfinder = pathfinder
+            # 需要从 pathfinder 获取节点信息
+            state_nodes = self.pathfinder.get_state_nodes()
+            for node_id, node_data in state_nodes.items():
+                self.nodes[node_id] = Node(
+                    id=node_id,
+                    x=node_data['x'],
+                    y=node_data['y'],
+                    type=node_data.get('type', 'normal')
+                )
+            for edge_data in self.pathfinder.get_state_edges():
+                edge = Edge(
+                    from_node=edge_data['from'],
+                    to_node=edge_data['to'],
+                    distance=edge_data['distance']
+                )
+                key = f"{edge.from_node}->{edge.to_node}"
+                self.edges[key] = edge
 
-        # 使用注入的 RealPathfinder（不再自行构建 CityGraph）
-        self.pathfinder = pathfinder
+        elif map_file is not None:
+            # 方式2：传入地图文件路径
+            self.pathfinder = RealPathfinder(map_file)
+            # 从文件加载 nodes/edges
+            with open(map_file, 'r', encoding='utf-8') as f:
+                file_data = json.load(f)
+            
+            # 类型映射
+            type_mapping_reverse = {
+                'warehouse': 'depot',
+                'task': 'task_point',
+                'charging': 'charging_station',
+                'normal': 'normal'
+            }
+            
+            for node_data in file_data.get('nodes', []):
+                orig_type = node_data.get('type', 'normal')
+                node = Node(
+                    id=node_data.get('id'),
+                    x=node_data.get('x'),
+                    y=node_data.get('y'),
+                    type=type_mapping_reverse.get(orig_type, orig_type)
+                )
+                self.nodes[node.id] = node
+            
+            for edge_data in file_data.get('edges', []):
+                edge = Edge(
+                    from_node=edge_data.get('from'),
+                    to_node=edge_data.get('to'),
+                    distance=edge_data.get('distance')
+                )
+                key = f"{edge.from_node}->{edge.to_node}"
+                self.edges[key] = edge
+
+        elif graph_data is not None:
+            # 方式3：传入 graph_data 字典（测试用）
+            for node_data in graph_data.get('nodes', []):
+                node = Node(**node_data)
+                self.nodes[node.id] = node
+            for edge_data in graph_data.get('edges', []):
+                edge = Edge(**edge_data)
+                key = f"{edge.from_node}->{edge.to_node}"
+                self.edges[key] = edge
+            
+            # 使用 CityGraph 作为 pathfinder
+            from core.graph import CityGraph, Node as ANode
+            type_mapping = {
+                'depot': 'warehouse',
+                'task_point': 'task',
+                'charging_station': 'charging'
+            }
+            self.city_graph = CityGraph()
+            for node in self.nodes.values():
+                a_type = type_mapping.get(node.type, 'normal')
+                self.city_graph.add_node(ANode(id=node.id, x=node.x, y=node.y, type=a_type))
+            for edge in self.edges.values():
+                self.city_graph.add_edge(edge.from_node, edge.to_node, edge.distance, bidirectional=True)
+            
+            # 使用适配器包装 CityGraph
+            self.pathfinder = CityGraphAdapter(self.city_graph)
+
+        else:
+            raise ValueError("必须提供 graph_data、map_file 或 pathfinder 之一")
 
         print(f"[Simulator] 图已加载: {len(self.nodes)} 节点, {len(self.edges)} 边")
 
@@ -109,21 +208,33 @@ class Simulator:
         self.queued_vehicle_ids: set[str] = set()
         self.active_charging_request_vehicle_ids: set[str] = set()
 
+        # 确保 Metrics 包含所有需要的字段
         self.metrics = Metrics(
             current_time=0.0, scale=scale, strategy=strategy,
             total_score=0.0, completed_tasks=0, timeout_tasks=0,
             total_distance=0.0, charging_times=0
         )
+        # 添加扩展字段
+        if not hasattr(self.metrics, 'low_battery_events'):
+            self.metrics.low_battery_events = 0
+        if not hasattr(self.metrics, 'charging_requests'):
+            self.metrics.charging_requests = 0
+        if not hasattr(self.metrics, 'charging_queue_events'):
+            self.metrics.charging_queue_events = 0
+        if not hasattr(self.metrics, 'total_charging_wait_time'):
+            self.metrics.total_charging_wait_time = 0.0
+        if not hasattr(self.metrics, 'max_queue_length'):
+            self.metrics.max_queue_length = 0
 
         self.current_time = 0.0
         self.next_task_id = 1
         self.task_gen_timer = 0.0
 
-        # TaskGenerator (when config provides burst/tight-deadline logic)
+        # TaskGenerator
         task_points = [n.id for n in self.nodes.values() if n.type == 'task_point']
         self._task_generator = TaskGenerator(task_points, self._task_config) if task_points else None
 
-        # Dispatcher with actual energy_per_km for consistent energy gating
+        # Dispatcher
         self._dispatcher = Dispatcher(
             self.pathfinder,
             strategy,
@@ -163,20 +274,17 @@ class Simulator:
                 )
 
     def _record_charging_request(self, vehicle: Vehicle) -> None:
-        """Count one charging demand until the vehicle finishes charging."""
         if vehicle.id in self.active_charging_request_vehicle_ids:
             return
         self.active_charging_request_vehicle_ids.add(vehicle.id)
         self.metrics.charging_requests += 1
 
     def _start_charging(self, vehicle: Vehicle, station: ChargingStation) -> None:
-        """Move a vehicle into CHARGING state and count actual charger usage."""
         station.charging_count += 1
         vehicle.status = VehicleStatus.CHARGING
         self.metrics.charging_times += 1
 
     def _queue_for_charging(self, vehicle: Vehicle, station: ChargingStation) -> None:
-        """Place a vehicle in a charging queue once, avoiding duplicate entries."""
         if vehicle.id in self.queued_vehicle_ids and vehicle.status != VehicleStatus.WAITING_FOR_CHARGE:
             self.queued_vehicle_ids.discard(vehicle.id)
             if station.queue_length > 0:
@@ -250,11 +358,11 @@ class Simulator:
                 'timeout_tasks': self.metrics.timeout_tasks,
                 'total_distance': round(self.metrics.total_distance, 1),
                 'charging_times': self.metrics.charging_times,
-                'low_battery_events': self.metrics.low_battery_events,
-                'charging_requests': self.metrics.charging_requests,
-                'charging_queue_events': self.metrics.charging_queue_events,
-                'total_charging_wait_time': round(self.metrics.total_charging_wait_time, 1),
-                'max_queue_length': self.metrics.max_queue_length
+                'low_battery_events': getattr(self.metrics, 'low_battery_events', 0),
+                'charging_requests': getattr(self.metrics, 'charging_requests', 0),
+                'charging_queue_events': getattr(self.metrics, 'charging_queue_events', 0),
+                'total_charging_wait_time': round(getattr(self.metrics, 'total_charging_wait_time', 0), 1),
+                'max_queue_length': getattr(self.metrics, 'max_queue_length', 0)
             }
         }
     
@@ -273,7 +381,6 @@ class Simulator:
         self._dispatch_tasks()
     
     def _move_vehicles(self, dt: float):
-        """移动车辆 - 逐节点移动，带低电量检测"""
         dt_hours = dt / 60.0
         distance_per_step = self.speed_kmh * dt_hours
 
@@ -281,7 +388,6 @@ class Simulator:
             if vehicle.status != VehicleStatus.MOVING:
                 continue
 
-            # ========== 低电量检测（可达性检查，优先处理） ==========
             remaining_to_target = max(
                 0.0,
                 self._get_distance(vehicle.current_node, vehicle.target_node)
@@ -295,7 +401,6 @@ class Simulator:
             else:
                 required_energy = remaining_to_target * self.energy_per_km * 1.5
             if vehicle.battery < required_energy:
-                # 找最近充电站
                 nearest_cs = self._find_nearest_charging_station(vehicle.current_node)
                 if nearest_cs is not None and nearest_cs != vehicle.current_node:
                     already_heading_to_charger = (
@@ -306,7 +411,6 @@ class Simulator:
                         self.metrics.low_battery_events += 1
                         self._record_charging_request(vehicle)
 
-                        # 保存当前任务
                         if vehicle.target_node != 0 and vehicle.target_node != nearest_cs:
                             task_id = self.vehicle_active_task.get(vehicle.id)
                             if task_id is None:
@@ -318,26 +422,21 @@ class Simulator:
                                 self.saved_tasks[vehicle.id] = task_id
                                 print(f"[Simulator] {vehicle.id} 电量不足 ({vehicle.battery:.1f}kWh)，中断任务 {task_id} 前往充电站")
 
-                        # 获取到充电站的路径
                         path_int, _ = self.pathfinder.find_path_and_distance(vehicle.current_node, nearest_cs)
                         vehicle.path = path_int[1:] if len(path_int) > 1 else []
 
                         vehicle.charging_target = nearest_cs
                         vehicle.target_node = nearest_cs
                         self.vehicle_accumulated_distance[vehicle.id] = 0.0
-                        continue  # 重新开始循环
+                        continue
             
-            # 正常移动逻辑
             if not vehicle.path:
                 vehicle.status = VehicleStatus.IDLE
                 vehicle.target_node = 0
                 self.vehicle_accumulated_distance[vehicle.id] = 0.0
-                
-                # 如果有保存的任务，重新分配
                 self._resume_saved_task(vehicle)
                 continue
             
-            # 获取路径中的下一个节点
             next_node = vehicle.path[0]
             dist = self._get_distance(vehicle.current_node, next_node)
             
@@ -345,11 +444,9 @@ class Simulator:
                 vehicle.path.pop(0)
                 continue
             
-            # 累积移动距离
             self.vehicle_accumulated_distance[vehicle.id] += distance_per_step
             
             if self.vehicle_accumulated_distance[vehicle.id] >= dist:
-                # 到达下一个节点
                 self.metrics.total_distance += dist
                 vehicle.battery = max(0.0, vehicle.battery - dist * self.energy_per_km)
                 old_node = vehicle.current_node
@@ -364,12 +461,10 @@ class Simulator:
                     vehicle.target_node = 0
                     print(f"[Simulator] {vehicle.id} 到达最终目标")
             else:
-                # 还在路上，消耗电量
                 vehicle.battery = max(0.0, vehicle.battery - distance_per_step * self.energy_per_km)
                 self.metrics.total_distance += distance_per_step
     
     def _handle_charging(self, dt: float):
-        """处理充电逻辑"""
         dt_hours = dt / 60.0
         charge_amount = self.charging_rate * dt_hours
 
@@ -387,7 +482,6 @@ class Simulator:
                     cs.charging_count = max(0, cs.charging_count - 1)
                     print(f"[Simulator] {vehicle.id} 充电完成，释放 {vehicle.current_node} 充电桩")
                 
-                # 检查排队车辆
                 if cs and cs.queue_length > 0:
                     for v in self.vehicles.values():
                         if (hasattr(v, 'charging_target') and 
@@ -411,7 +505,6 @@ class Simulator:
                 self._resume_saved_task(vehicle)
     
     def _check_low_battery(self):
-        """检查低电量（空闲车辆）"""
         for vehicle in self.vehicles.values():
             if vehicle.battery < self.low_battery_threshold and vehicle.status == VehicleStatus.IDLE:
                 self.metrics.low_battery_events += 1
@@ -432,7 +525,6 @@ class Simulator:
                         print(f"[Simulator] {vehicle.id} 电量不足 ({vehicle.battery:.1f}kWh)，在 {nearest_cs} 排队")
                     continue
                 
-                # 获取到充电站的路径
                 path_int, _ = self.pathfinder.find_path_and_distance(vehicle.current_node, nearest_cs)
                 vehicle.path = path_int[1:] if len(path_int) > 1 else []
 
@@ -444,7 +536,6 @@ class Simulator:
                 print(f"[Simulator] {vehicle.id} 电量不足 ({vehicle.battery:.1f}kWh)，前往 {nearest_cs} 充电")
 
     def _resume_saved_task(self, vehicle: Vehicle) -> bool:
-        """Resume the task interrupted by charging, using task id instead of node id."""
         saved_task_id = self.saved_tasks.get(vehicle.id)
         if not saved_task_id:
             return False
@@ -467,20 +558,26 @@ class Simulator:
         return True
     
     def _find_nearest_charging_station(self, from_node: int) -> Optional[int]:
-        """通过 RealPathfinder 查找最近充电站（Dijkstra 最短路径）."""
         nearest_int, _ = self.pathfinder.nearest_charging_station(from_node)
         return nearest_int if nearest_int is not None else None
     
     def _can_reach_and_return(self, vehicle, task_node_id: int) -> bool:
-        """检查车辆是否有足够电量到达任务节点并安全返回充电站或仓库."""
-        _, d1 = self.pathfinder.find_path_and_distance(vehicle.current_node, task_node_id)
-        nearest_cs, d2 = self.pathfinder.nearest_charging_station(task_node_id)
-        if self.depot_ids:
-            _, d3 = self.pathfinder.find_path_and_distance(task_node_id, self.depot_ids[0])
-        else:
-            d3 = float("inf")
-        recovery_dist = min(d2, d3) if nearest_cs is not None else d3
-        return vehicle.battery >= (d1 + recovery_dist) * self.energy_per_km
+        """检查车辆是否有足够电量到达任务节点并安全返回"""
+        if self.pathfinder is None:
+            return True
+        
+        try:
+            _, d1 = self.pathfinder.find_path_and_distance(vehicle.current_node, task_node_id)
+            nearest_cs, d2 = self.pathfinder.nearest_charging_station(task_node_id)
+            if self.depot_ids:
+                _, d3 = self.pathfinder.find_path_and_distance(task_node_id, self.depot_ids[0])
+            else:
+                d3 = float("inf")
+            recovery_dist = min(d2, d3) if nearest_cs is not None else d3
+            return vehicle.battery >= (d1 + recovery_dist) * self.energy_per_km + 5.0
+        except Exception as e:
+            print(f"[Simulator] 能量检查异常: {e}")
+            return True
 
     def _check_tasks_completion(self):
         completed_tasks = []
@@ -490,11 +587,9 @@ class Simulator:
                 continue
             
             for vehicle in self.vehicles.values():
-                if (
-                    vehicle.current_node == task.node_id and
+                if (vehicle.current_node == task.node_id and
                     vehicle.status == VehicleStatus.IDLE and
-                    self.vehicle_active_task.get(vehicle.id) == task.id
-                ):
+                    self.vehicle_active_task.get(vehicle.id) == task.id):
                     completed_tasks.append((task, vehicle))
                     break
         
@@ -503,13 +598,14 @@ class Simulator:
             time_early = max(0, task.deadline - self.current_time)
             task_dist = self.task_travel_distance.pop(task.id, 0.0)
             score = 100 + time_early * 2 - task_dist * 0.3
+            score = max(score, 0)
             self.metrics.total_score += score
             self.metrics.completed_tasks += 1
             
             vehicle.load += task.weight
             if vehicle.load > self.load_capacity:
                 self.metrics.total_score -= 50
-                print(f"[Simulator] 兜底警告: 调度阶段未拦截 {vehicle.id} 超载任务，已扣50分")
+                print(f"[Simulator] 警告: {vehicle.id} 超载！扣50分")
             if self.vehicle_active_task.get(vehicle.id) == task.id:
                 self.vehicle_active_task[vehicle.id] = None
             if self.saved_tasks.get(vehicle.id) == task.id:
@@ -540,7 +636,6 @@ class Simulator:
         if not task_points:
             return
 
-        # Use TaskGenerator when available (difficulty-aware burst / tight deadlines)
         if self._task_generator is not None and self._task_config is not None:
             new_tasks = self._task_generator.generate_tasks(self.current_time)
             for td in new_tasks:
@@ -557,18 +652,13 @@ class Simulator:
                 print(f"[Simulator] 新任务 {task.id}: 重量{task.weight}kg, 截止{task.deadline:.1f}min")
             return
 
-        # Fallback: simple random generation
         if random.random() < self.task_spawn_probability:
             task = Task(
                 id=f"t{self.next_task_id}",
                 node_id=random.choice(task_points),
-                weight=random.randint(
-                    int(self.task_weight_min), int(self.task_weight_max)
-                ),
+                weight=random.randint(int(self.task_weight_min), int(self.task_weight_max)),
                 release_time=self.current_time,
-                deadline=self.current_time + random.randint(
-                    int(self.task_deadline_min), int(self.task_deadline_max)
-                ),
+                deadline=self.current_time + random.randint(int(self.task_deadline_min), int(self.task_deadline_max)),
                 status=TaskStatus.WAITING,
             )
             self.tasks[task.id] = task
@@ -577,6 +667,7 @@ class Simulator:
     
     def _dispatch_tasks(self):
         actions = self._dispatcher.dispatch(self.get_state())
+        print(f"[DEBUG] 调度器返回 {len(actions)} 条指令")
         self._apply_dispatch(actions)
     
     def _apply_dispatch(self, actions: list):
@@ -590,16 +681,10 @@ class Simulator:
             if vehicle.status != VehicleStatus.IDLE or task.status != TaskStatus.WAITING:
                 continue
             if vehicle.load + task.weight > self.load_capacity:
-                print(
-                    f"[Simulator] 警告: 跳过超载分配 {task.id} 给 {vehicle.id} "
-                    f"({vehicle.load:.1f}+{task.weight:.1f}>{self.load_capacity:.1f}kg)"
-                )
+                print(f"[Simulator] 跳过超载分配 {task.id} 给 {vehicle.id}")
                 continue
             if not self._can_reach_and_return(vehicle, task.node_id):
-                print(
-                    f"[Simulator] 警告: {vehicle.id} 电量不足({vehicle.battery:.1f}kWh) "
-                    f"无法安全执行任务 {task.id}(node={task.node_id})"
-                )
+                print(f"[Simulator] 跳过电量不足分配 {task.id} 给 {vehicle.id}")
                 continue
 
             task.status = TaskStatus.ASSIGNED
@@ -608,15 +693,17 @@ class Simulator:
             self.vehicle_active_task[vehicle.id] = task.id
             self.saved_tasks[vehicle.id] = None
 
-            path_int = action.get('path', [])
-            if path_int and path_int[0] == vehicle.current_node:
-                vehicle.path = path_int[1:]
-            elif path_int:
-                vehicle.path = path_int
-            else:
+            # 获取路径
+            try:
+                path_int, _ = self.pathfinder.find_path_and_distance(vehicle.current_node, task.node_id)
+                if path_int and path_int[0] == vehicle.current_node:
+                    vehicle.path = path_int[1:]
+                else:
+                    vehicle.path = path_int
+                print(f"[Simulator] 分配任务 {task.id} 给 {vehicle.id}, 从 {vehicle.current_node} 到 {task.node_id}")
+            except Exception as e:
                 vehicle.path = [task.node_id]
-
-            print(f"[Simulator] 分配任务 {task.id} 给 {vehicle.id}, 从 {vehicle.current_node} 到 {task.node_id}, 路径长度: {len(vehicle.path)}")
+                print(f"[Simulator] 分配任务 {task.id} 给 {vehicle.id}, 路径计算失败: {e}")
 
             self.vehicle_accumulated_distance[vehicle.id] = 0.0
             _, task_dist = self.pathfinder.find_path_and_distance(vehicle.current_node, task.node_id)

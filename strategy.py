@@ -20,9 +20,9 @@ class Dispatcher:
         """
         初始化调度中心
         :param pathfinder: RealPathfinder 实例 (用于计算最短路径)
-        :param strategy_name: 调度策略，支持 "nearest" (最近优先)、"largest" (最大权重优先) 和 "energy_aware_hybrid" (能量感知综合调度)
+        :param strategy_name: 调度策略
         :param load_capacity: 默认最大载重容量
-        :param cooperative_mode: 是否允许多辆车协同完成同一任务 (当单辆车载重不足时)
+        :param cooperative_mode: 是否允许多辆车协同完成同一任务
         """
         self.pathfinder = pathfinder
         self.strategy_name = strategy_name
@@ -34,11 +34,11 @@ class Dispatcher:
 
         # --- 归一化得分权重配置 ---
         self.base_score = 30.0       # 基础得分底衬
-        self.alpha = 40.0            # 收益最大加分 (基于货物占车辆载重比例)
-        self.beta = 30.0             # 紧急度最大加分 (基于宽裕时间倒数)
-        self.gamma = 0.1             # 距离惩罚系数 (每单位距离扣减分值，温和扣分)
-        self.delta = 20.0            # 低电量风险最大扣分 (仅在电量低于50%时触发)
-        self.epsilon = 2.0           # 充电站排队惩罚 (每多一辆车扣 2 分)
+        self.alpha = 40.0            # 收益最大加分 
+        self.beta = 30.0             # 紧急度最大加分 
+        self.gamma = 0.1             # 距离惩罚系数 
+        self.delta = 20.0            # 低电量风险最大扣分
+        self.epsilon = 2.0           # 充电站排队惩罚 
 
     def _as_float(self, value, default: float = 0.0) -> float:
         try:
@@ -47,7 +47,7 @@ class Dispatcher:
             return default
 
     def _is_load_feasible(self, vehicle: dict, task: dict) -> bool:
-        """Return True if the vehicle can carry this task without overloading (非协同模式)."""
+        """Return True if the vehicle can carry this task without overloading."""
         current_load = self._as_float(vehicle.get('load', 0), 0.0)
         task_weight = self._as_float(task.get('weight', 0), 0.0)
         capacity = self._as_float(
@@ -71,16 +71,12 @@ class Dispatcher:
 
     def _try_cooperative_assignment(
         self,
-        idle_vehicles: List[dict],
+        available_vehicles: List[dict],
         task: dict,
         state: dict,
     ) -> Tuple[Optional[List[dict]], Optional[List[int]]]:
         """
         尝试将超重任务分配给多辆车协同完成。
-        返回: (actions_list, assigned_vehicle_indices) 或 (None, None) 表示失败。
-        actions 中的每一条格式为:
-            {'vehicle_id': int, 'task_id': int, 'action': 'assign',
-             'path': list, 'load_amount': float}
         """
         if not self.cooperative_mode:
             return None, None
@@ -89,17 +85,15 @@ class Dispatcher:
         if task_weight <= 0:
             return None, None
 
-        # 筛选出能够到达任务点且电量足够的车辆（不考虑载重，仅考虑路径可达性）
         feasible_vehicles = []
         total_remaining_capacity = 0.0
         task_node = int(task.get('node_id', 0))
         current_time = self._as_float(state.get('current_time', 0))
 
-        for veh in idle_vehicles:
+        for veh in available_vehicles:
             veh_node = int(veh.get('current_node', 0))
             veh_battery = veh.get('battery', 100)
             veh_max_battery = max(veh.get('max_battery', veh_battery), 1)
-            battery_ratio = veh_battery / veh_max_battery
             v_speed = self._as_float(veh.get('speed', 1.0), 1.0)
 
             try:
@@ -107,12 +101,10 @@ class Dispatcher:
             except Exception:
                 continue
 
-            # 电量检查 (至少能到达任务点，且保留一点余量)
             required_energy = dist * self.consume_rate
             if veh_battery < required_energy + self.safety_margin:
                 continue
 
-            # 时间检查 (能否在截止时间前到达)
             deadline = task.get('deadline', 9999)
             time_to_reach = dist / v_speed
             if current_time + time_to_reach >= deadline:
@@ -131,9 +123,8 @@ class Dispatcher:
             total_remaining_capacity += remaining_cap
 
         if total_remaining_capacity < task_weight:
-            return None, None  # 所有空闲车辆总载重仍不足
+            return None, None  
 
-        # 按容量比例分配货物重量
         actions = []
         assigned_indices = []
         remaining_weight = task_weight
@@ -141,11 +132,10 @@ class Dispatcher:
         for item in feasible_vehicles:
             veh = item['vehicle']
             cap = item['remaining_capacity']
-            # 分配比例 = 该车容量 / 总容量
             assign_ratio = cap / total_remaining_capacity
             assign_weight = task_weight * assign_ratio
-            # 避免浮点误差导致超分配
             assign_weight = min(assign_weight, remaining_weight, cap)
+            
             if assign_weight <= 0:
                 continue
 
@@ -154,23 +144,19 @@ class Dispatcher:
                 'task_id': task['id'],
                 'action': 'assign',
                 'path': item['path'],
-                'load_amount': assign_weight,   # 携带的货物重量
+                'load_amount': assign_weight, 
             })
-            assigned_indices.append(id(veh))  # 仅用于去重标记
+            assigned_indices.append(veh['id'])  
             remaining_weight -= assign_weight
             if remaining_weight <= 1e-6:
                 break
 
-        if remaining_weight > 0:
-            # 理论上不应该发生，但若发生则回退
+        if remaining_weight > 1e-4: # 增加微小容差防止浮点精度问题导致误判
             return None, None
 
         return actions, assigned_indices
 
     def dispatch(self, state: dict) -> list:
-        """
-        核心调度算法，接收 B 模块的状态字典，返回 B 模块可执行的指令列表
-        """
         idle_vehicles = [v for v in state.get('vehicles', [])
                          if str(v.get('status', '')).lower() == 'idle']
 
@@ -196,12 +182,15 @@ class Dispatcher:
         actions = []
         unassigned_tasks.sort(key=lambda x: x.get('weight', 0), reverse=True)
         assigned_task_ids = set()
+        assigned_vehicle_ids = set() # 修复点 2：引入已分配车辆集合
 
         for vehicle in idle_vehicles:
-            if not unassigned_tasks:
+            if vehicle['id'] in assigned_vehicle_ids:
+                continue
+            
+            if len(assigned_task_ids) == len(unassigned_tasks):
                 break
 
-            # 找一个可承担的任务（优先尝试单个车辆）
             task = None
             for candidate in unassigned_tasks:
                 if candidate['id'] in assigned_task_ids:
@@ -212,24 +201,20 @@ class Dispatcher:
 
             # 单辆车无法装载 → 尝试协同
             if task is None and self.cooperative_mode:
-                # 从剩余任务中选择重量最大的进行协同尝试
                 for candidate in unassigned_tasks:
                     if candidate['id'] in assigned_task_ids:
                         continue
-                    coop_actions, _ = self._try_cooperative_assignment([vehicle], candidate, state)
+                    
+                    # 修复点 1：传入所有剩余未分配的车辆
+                    available_vehs = [v for v in idle_vehicles if v['id'] not in assigned_vehicle_ids]
+                    coop_actions, veh_ids = self._try_cooperative_assignment(available_vehs, candidate, state)
+                    
                     if coop_actions:
-                        # 只使用涉及当前车辆的协同动作（实际上_try_cooperative_assignment会返回所有需要的车辆动作，
-                        # 但这里我们只对当前车辆循环，所以需要特殊处理：要么一次性分配所有协同车辆，要么修改主循环逻辑。
-                        # 更简洁的方式：如果当前车辆参与协同，立即生成完整的协同动作集并跳出车辆循环。
-                        # 为保持与原结构一致，这里我们采用“找到第一个可协同的任务后，直接生成所有动作并返回”。
-                        all_actions, _ = self._try_cooperative_assignment([vehicle] + idle_vehicles, candidate, state)
-                        if all_actions:
-                            # 将协同动作加入结果，并从unassigned_tasks中移除该任务
-                            actions.extend(all_actions)
-                            unassigned_tasks = [t for t in unassigned_tasks if t['id'] != candidate['id']]
-                            assigned_task_ids.add(candidate['id'])
-                            break
-                continue  # 继续处理下一辆车
+                        actions.extend(coop_actions)
+                        assigned_task_ids.add(candidate['id'])
+                        assigned_vehicle_ids.update(veh_ids)
+                        break # 跳出任务寻找循环
+                continue 
 
             if task is None:
                 continue
@@ -247,8 +232,8 @@ class Dispatcher:
                 'action': 'assign',
                 'path': path
             })
-            unassigned_tasks.remove(task)
             assigned_task_ids.add(task['id'])
+            assigned_vehicle_ids.add(vehicle['id'])
 
         return actions
 
@@ -258,9 +243,13 @@ class Dispatcher:
     def _nearest_dispatch(self, idle_vehicles, unassigned_tasks, state) -> list:
         actions = []
         assigned_task_ids = set()
+        assigned_vehicle_ids = set()
 
         for vehicle in idle_vehicles:
-            if not unassigned_tasks:
+            if vehicle['id'] in assigned_vehicle_ids:
+                continue
+                
+            if len(assigned_task_ids) == len(unassigned_tasks):
                 break
 
             best_task = None
@@ -282,19 +271,19 @@ class Dispatcher:
                     except Exception:
                         pass
 
-            # 若无单辆车能装载，尝试协同
             if best_task is None and self.cooperative_mode:
                 for task in unassigned_tasks:
                     if task['id'] in assigned_task_ids:
                         continue
-                    coop_actions, _ = self._try_cooperative_assignment([vehicle], task, state)
+                        
+                    available_vehs = [v for v in idle_vehicles if v['id'] not in assigned_vehicle_ids]
+                    coop_actions, veh_ids = self._try_cooperative_assignment(available_vehs, task, state)
+                    
                     if coop_actions:
-                        all_actions, _ = self._try_cooperative_assignment([vehicle] + idle_vehicles, task, state)
-                        if all_actions:
-                            actions.extend(all_actions)
-                            unassigned_tasks = [t for t in unassigned_tasks if t['id'] != task['id']]
-                            assigned_task_ids.add(task['id'])
-                            break
+                        actions.extend(coop_actions)
+                        assigned_task_ids.add(task['id'])
+                        assigned_vehicle_ids.update(veh_ids)
+                        break
                 continue
 
             if best_task:
@@ -304,8 +293,8 @@ class Dispatcher:
                     'action': 'assign',
                     'path': best_path
                 })
-                unassigned_tasks.remove(best_task)
                 assigned_task_ids.add(best_task['id'])
+                assigned_vehicle_ids.add(vehicle['id'])
 
         return actions
 
@@ -318,11 +307,10 @@ class Dispatcher:
         current_time = state.get('current_time', metrics.get('current_time', 0))
         chargers = state.get('charging_stations', state.get('chargers', []))
         assigned_task_ids = set()
+        assigned_vehicle_ids = set() # 引入以安全管理协同分配的车辆
 
-        # 充电站查询缓存
         charger_info_cache = {}
 
-        # 地图规模自适应参数 (与原逻辑相同)
         map_scale = "medium"
         if 'scenario' in state:
             map_scale = str(state.get('scenario', 'medium')).lower()
@@ -343,6 +331,9 @@ class Dispatcher:
         dynamic_soc_trigger = config["soc_trigger"]
 
         for vehicle in idle_vehicles:
+            if vehicle['id'] in assigned_vehicle_ids:
+                continue
+                
             best_task = None
             best_path = None
             max_score = -float('inf')
@@ -362,18 +353,19 @@ class Dispatcher:
             if v_capacity <= 0:
                 v_capacity = 1000.0
 
-            # 候选任务集合（单辆车可行 + 协同可行）
-            feasible_tasks = []
             for task in unassigned_tasks:
                 if task['id'] in assigned_task_ids:
                     continue
 
-                # 单辆车载重可行性检查
                 single_ok = self._is_load_feasible(vehicle, task)
                 coop_ok = False
+                
+                # 修复点 1：安全检查协同可行性
                 if not single_ok and self.cooperative_mode:
-                    coop_actions, _ = self._try_cooperative_assignment([vehicle], task, state)
-                    coop_ok = (coop_actions is not None)
+                    available_vehs = [v for v in idle_vehicles if v['id'] not in assigned_vehicle_ids]
+                    coop_actions_test, _ = self._try_cooperative_assignment(available_vehs, task, state)
+                    coop_ok = (coop_actions_test is not None)
+                    
                 if not (single_ok or coop_ok):
                     continue
 
@@ -401,7 +393,6 @@ class Dispatcher:
                     if veh_battery < required_energy + self.safety_margin:
                         continue
 
-                    # 计算得分 (与原逻辑相同)
                     task_weight = self._as_float(task.get('weight', 0), 0.0)
                     load_ratio = min(1.0, task_weight / v_capacity)
                     profit_score = self.alpha * load_ratio
@@ -434,7 +425,6 @@ class Dispatcher:
                     pass
 
             if best_task is not None:
-                # 先检查单辆车是否可行
                 if self._is_load_feasible(vehicle, best_task):
                     actions.append({
                         'vehicle_id': vehicle['id'],
@@ -443,25 +433,18 @@ class Dispatcher:
                         'path': best_path
                     })
                     assigned_task_ids.add(best_task['id'])
+                    assigned_vehicle_ids.add(vehicle['id'])
                 elif self.cooperative_mode:
-                    # 尝试协同：找到所有空闲车辆中能一起完成该任务的集合
-                    all_vehicles = [vehicle] + [v for v in idle_vehicles if v['id'] != vehicle['id']]
-                    coop_actions, _ = self._try_cooperative_assignment(all_vehicles, best_task, state)
+                    available_vehs = [v for v in idle_vehicles if v['id'] not in assigned_vehicle_ids]
+                    coop_actions, veh_ids = self._try_cooperative_assignment(available_vehs, best_task, state)
                     if coop_actions:
                         actions.extend(coop_actions)
                         assigned_task_ids.add(best_task['id'])
-                        # 从空闲列表中移除已参与协同的车辆（避免重复分配）
-                        for act in coop_actions:
-                            for v in idle_vehicles:
-                                if v['id'] == act['vehicle_id']:
-                                    idle_vehicles.remove(v)
-                                    break
+                        assigned_vehicle_ids.update(veh_ids) # 标记多辆车已分配
+
         return actions
 
     def _get_nearest_charger_info(self, task_node, chargers):
-        """
-        辅助函数：寻找离给定任务点最近的充电站，返回 (节点ID, 距离, 当前排队人数)
-        """
         if not chargers:
             return None, float('inf'), 0
 
