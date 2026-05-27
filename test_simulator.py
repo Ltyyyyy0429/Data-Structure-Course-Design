@@ -98,7 +98,7 @@ if __name__ == "__main__":
     print("="*60)
 
     # 建议仿真时长：90 ~ 120 分钟，稳定触发充电
-    SIMULATION_TIME = 90
+    SIMULATION_TIME = 150
 
     # 运行 nearest 策略
     res1 = run_simulation("nearest", SIMULATION_TIME)
