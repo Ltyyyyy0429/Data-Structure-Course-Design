@@ -14,12 +14,12 @@ class Dispatcher:
         
         # === 能量感知综合策略专用的基础属性和超参数 ===
         self.consume_rate = 0.5      # 每单位距离耗电量
-        self.safety_margin = 5.0     # 电池安全余量 (防止刚好没电)
+        self.safety_margin = 2.0     # 电池安全余量 (防止刚好没电)
         
         self.alpha = 1.0   # 收益权重 (基于货物重量)
         self.beta = 100.0  # 紧急度权重 (放大时间倒数的影响)
-        self.gamma = 0.5   # 距离惩罚系数
-        self.delta = 50.0  # 电量风险惩罚系数
+        self.gamma = 0.3   # 距离惩罚系数
+        self.delta = 20.0  # 电量风险惩罚系数
         self.epsilon = 10.0 # 充电站排队惩罚系数
 
     def dispatch(self, state: dict) -> list:
@@ -115,16 +115,22 @@ class Dispatcher:
     # ==========================================
     def _energy_aware_hybrid_dispatch(self, idle_vehicles, unassigned_tasks, state) -> list:
         actions = []
-        current_time = state.get('current_time', 0)
-        chargers = state.get('chargers', [])
         
+        # [修改] C-1: 清理 current_time 读取
+        metrics = state.get('metrics', state) 
+        current_time = metrics.get('current_time', 0)
+        
+        chargers = state.get('chargers', [])
         assigned_task_ids = set()
+
+        # === [新增] C-3 性能优化：同一 tick 内的充电站查询缓存 ===
+        # 结构为 { task_node_id: (nearest_charger_node, distance, queue_length) }
+        charger_info_cache = {}
 
         for vehicle in idle_vehicles:
             best_task = None
             max_score = -float('inf')
             
-            # 兼容原有属性获取方式
             veh_node = int(vehicle.get('current_node', 0))
             veh_battery = vehicle.get('battery', 100)
             veh_max_battery = vehicle.get('max_battery', 100)
@@ -137,9 +143,16 @@ class Dispatcher:
                 task_node = int(task.get('node_id', 0))
                 
                 try:
-                    # 1. 依赖 A 模块计算距离 (复用容错调用逻辑)
+                    # 1. 依赖 A 模块计算距离 (小车到任务点的路径无法缓存，因为每辆车位置不同)
                     _, d1 = self.city_graph.shortest_path(veh_node, task_node)
-                    nearest_charger_node, d2, queue_length = self._get_nearest_charger_info(task_node, chargers)
+                    
+                    # === [修改] C-3 性能优化：优先从缓存读取任务点到充电站的信息 ===
+                    if task_node in charger_info_cache:
+                        nearest_charger_node, d2, queue_length = charger_info_cache[task_node]
+                    else:
+                        # 缓存未命中，调用 A 模块接口计算，并存入缓存
+                        nearest_charger_node, d2, queue_length = self._get_nearest_charger_info(task_node, chargers)
+                        charger_info_cache[task_node] = (nearest_charger_node, d2, queue_length)
                     
                     if d2 == float('inf'):
                         continue # 找不到去充电站的路，跳过
