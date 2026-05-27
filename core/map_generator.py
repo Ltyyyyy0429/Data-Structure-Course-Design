@@ -345,6 +345,9 @@ def _apply_one_way_edges(
             _remove_adjacency(graph, edge.to_node, edge.from_node)
         else:
             _remove_adjacency(graph, edge.from_node, edge.to_node)
+            # Swap from/to so the Edge object's direction matches the kept adjacency
+            edge.from_node, edge.to_node = edge.to_node, edge.from_node
+        edge.bidirectional = False
 
 
 # =========================================================================

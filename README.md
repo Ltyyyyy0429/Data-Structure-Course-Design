@@ -300,3 +300,17 @@ recovery_dist = min(distance(task → nearest_charger), distance(task → depot)
 - 计算剩余路径距离 + 从终点到最近充电站的距离
 - 仅在电量不足到达目标且无法安全撤退时才触发低电量处理
 - 空闲车辆（`_check_low_battery`）保持原绝对阈值检查
+
+## P1 缺陷修复
+
+### 单向边 JSON 持久化
+
+`core/graph.py` 的 `Edge` dataclass 新增 `bidirectional: bool = True` 字段。地图生成器在应用单向边时会标记 `bidirectional=False` 并序列化到 JSON。加载旧地图文件时（无 `bidirectional` 字段）默认为 `True`，向后兼容。
+
+### 任务 ID 碰撞防护
+
+`add_test_task` 无论传入何种格式的 `task_id`，始终推进 `next_task_id = max(next_task_id, len(tasks) + 1000)`，杜绝手动任务 ID 与自动生成 ID 碰撞。
+
+### 充电队列去重防御
+
+`_queue_for_charging` 入口增加状态一致性检查：若车辆已在去重集合中但状态不是 `WAITING_FOR_CHARGE`，自动清理后再入队，防止僵尸条目。\n
