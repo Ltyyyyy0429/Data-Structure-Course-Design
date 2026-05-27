@@ -13,7 +13,7 @@ from core.map_generator import generate_all_maps
 
 
 SCALES = ["small", "medium", "large", "extra_large"]
-STRATEGIES = ["nearest", "largest", "energy_aware_hybrid"]
+STRATEGIES = ["nearest", "largest", "energy_aware_hybrid", "genetic_algorithm"]
 DIFFICULTIES = ["easy", "medium", "hard"]
 RESULT_CSV_PATH = "results/experiment_results.csv"
 EXPERIMENT_FIELDS = [
