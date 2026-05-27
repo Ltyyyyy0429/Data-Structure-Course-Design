@@ -14,21 +14,23 @@ class Dispatcher:
         初始化调度中心
         :param pathfinder: RealPathfinder 实例 (用于计算最短路径)
         :param strategy_name: 调度策略，支持 "nearest" (最近优先)、"largest" (最大权重优先) 和 "energy_aware_hybrid" (能量感知综合调度)
-        :param consume_rate: 每单位距离耗电量，默认 0.5；传 None 使用原默认值
+        :param load_capacity: 默认最大载重容量
         """
         self.pathfinder = pathfinder
         self.strategy_name = strategy_name
         self.load_capacity = load_capacity
 
-        # === 能量感知综合策略专用的基础属性和超参数 ===
+       
         self.consume_rate = 0.5      # 每单位距离耗电量
-        self.safety_margin = 2.0     # 电池安全余量 (防止刚好没电)
+        self.safety_margin = 1.0     # 电池安全余量 
         
-        self.alpha = 1.0   # 收益权重 (基于货物重量)
-        self.beta = 100.0  # 紧急度权重 (放大时间倒数的影响)
-        self.gamma = 0.3   # 距离惩罚系数
-        self.delta = 20.0  # 电量风险惩罚系数
-        self.epsilon = 10.0 # 充电站排队惩罚系数
+        # --- 归一化得分权重配置 ---
+        self.base_score = 30.0       # 基础得分底衬 
+        self.alpha = 40.0            # 收益最大加分 (基于货物占车辆载重比例)
+        self.beta = 30.0             # 紧急度最大加分 (基于宽裕时间倒数)
+        self.gamma = 0.1             # 距离惩罚系数 (每单位距离扣减分值，温和扣分)
+        self.delta = 20.0            # 低电量风险最大扣分 (仅在电量低于50%时触发)
+        self.epsilon = 2.0           # 充电站排队惩罚 (每多一辆车扣 2 分)
 
     def _as_float(self, value, default: float = 0.0) -> float:
         try:
@@ -52,18 +54,16 @@ class Dispatcher:
         """
         核心调度算法，接收 B 模块的状态字典，返回 B 模块可执行的指令列表
         """
-        # 1. 完美适配 B 同学的状态判定：使用 lower() 兼容 'idle' 和 'waiting'
+        # 完美适配 B 同学的状态判定：使用 lower() 兼容 'idle' 和 'waiting'
         idle_vehicles = [v for v in state.get('vehicles', []) 
                          if str(v.get('status', '')).lower() == 'idle']
         
         unassigned_tasks = [t for t in state.get('tasks', []) 
                             if str(t.get('status', '')).lower() == 'waiting']
 
-        # 如果没有空闲车辆或没有待分配任务，直接返回空指令
         if not idle_vehicles or not unassigned_tasks:
             return []
 
-        # 2. 核心路由：根据 strategy_name 调用对应的调度分支
         if self.strategy_name == "largest":
             return self._largest_dispatch(idle_vehicles, unassigned_tasks)
         elif self.strategy_name == "nearest":
@@ -78,7 +78,6 @@ class Dispatcher:
     # ==========================================
     def _largest_dispatch(self, idle_vehicles, unassigned_tasks) -> list:
         actions = []
-        # 按任务权重降序排列
         unassigned_tasks.sort(key=lambda x: x.get('weight', 0), reverse=True)
 
         for vehicle in idle_vehicles:
@@ -158,14 +157,12 @@ class Dispatcher:
     def _energy_aware_hybrid_dispatch(self, idle_vehicles, unassigned_tasks, state) -> list:
         actions = []
         
-        # [修改] C-1: 清理 current_time 读取
         metrics = state.get('metrics', {})
         current_time = state.get('current_time', metrics.get('current_time', 0))
         chargers = state.get('charging_stations', state.get('chargers', []))
         assigned_task_ids = set()
 
-        # === [新增] C-3 性能优化：同一 tick 内的充电站查询缓存 ===
-        # 结构为 { task_node_id: (nearest_charger_node, distance, queue_length) }
+        # 充电站查询缓存
         charger_info_cache = {}
 
         for vehicle in idle_vehicles:
@@ -177,6 +174,17 @@ class Dispatcher:
             veh_battery = vehicle.get('battery', 100)
             veh_max_battery = max(vehicle.get('max_battery', veh_battery), 1)
             battery_ratio = max(0.0, min(1.0, veh_battery / veh_max_battery))
+            v_speed = self._as_float(vehicle.get('speed', 1.0), 1.0) 
+
+            # 获取车辆的真实载重上限，用于收益百分比归一化
+            v_capacity = self._as_float(
+                vehicle.get('max_load',
+                            vehicle.get('load_capacity',
+                                        vehicle.get('capacity', self.load_capacity))),
+                self.load_capacity,
+            )
+            if v_capacity <= 0:
+                v_capacity = 1000.0
 
             for task in unassigned_tasks:
                 if task['id'] in assigned_task_ids:
@@ -190,30 +198,60 @@ class Dispatcher:
                     # 1. 依赖 A 模块计算距离与路径 (小车到任务点的路径无法缓存，因为每辆车位置不同)
                     path, d1 = self.pathfinder.find_path_and_distance(veh_node, task_node)
                     
-                    # === [修改] C-3 性能优化：优先从缓存读取任务点到充电站的信息 ===
+                    # 2. 获取最近充电站信息（优先读缓存）
                     if task_node in charger_info_cache:
                         nearest_charger_node, d2, queue_length = charger_info_cache[task_node]
                     else:
-                        # 缓存未命中，调用 A 模块接口计算，并存入缓存
                         nearest_charger_node, d2, queue_length = self._get_nearest_charger_info(task_node, chargers)
                         charger_info_cache[task_node] = (nearest_charger_node, d2, queue_length)
                     
                     if d2 == float('inf'):
                         continue
 
+                    # ==========================================
+                    # 1：死亡冲锋拦截 (不可行任务直接排除)
+                    # ==========================================
+                    time_left = task.get('deadline', 9999) - current_time
+                    time_to_reach = d1 / v_speed
+                    if time_to_reach >= time_left:
+                        continue  
+
+                    # ==========================================
+                    # 2：底线电量预检 (续航不足直接排除)
+                    # ==========================================
                     required_energy = (d1 + d2) * self.consume_rate
                     if veh_battery < required_energy + self.safety_margin:
-                        continue
+                        continue  
 
-                    profit_score = self.alpha * task.get('weight', 10)
-                    time_left = max(1, task.get('deadline', 9999) - current_time)
-                    urgency_score = self.beta * (1.0 / time_left)
-
+                    # ==========================================
+                    # “百分制”打分演算区
+                    # ==========================================
+                    
+                    # 1. 归一化收益得分 (当前任务重量占汽车载重上限的比例 * alpha)
+                    task_weight = self._as_float(task.get('weight', 0), 0.0)
+                    load_ratio = min(1.0, task_weight / v_capacity)
+                    profit_score = self.alpha * load_ratio
+                    
+                    # 2. 归一化紧急度得分 (考虑赶路时间后的真正宽裕度，分母越小加分越多，最高30分)
+                    buffer_time = max(0.0, time_left - time_to_reach)
+                    urgency_score = self.beta * (1.0 / (buffer_time + 1.0))
+                    
+                    # 3. 距离与排队温和惩罚项
                     distance_penalty = self.gamma * d1
-                    battery_risk_penalty = self.delta * (1.0 - battery_ratio)
                     queue_penalty = self.epsilon * queue_length
 
-                    total_score = profit_score + urgency_score - distance_penalty - battery_risk_penalty - queue_penalty
+                    # 4. 电量风险非线性惩罚 (健康时为0，跌破50%后温柔扣减，最高扣20分)
+                    if battery_ratio > 0.5:
+                        battery_risk_penalty = 0.0
+                    else:
+                        battery_risk_penalty = self.delta * ((0.5 - battery_ratio) / 0.5) ** 2
+
+                    # 5. 组合总分：基础分 + 收益 + 紧急度 - 各项微额惩罚
+                    total_score = self.base_score + profit_score + urgency_score \
+                                  - distance_penalty - battery_risk_penalty - queue_penalty
+                    
+                    # 确保即使极限扣分，分数也绝对不会突破 0 变成刺眼的负数
+                    total_score = max(0.0, total_score)
 
                     if total_score > max_score:
                         max_score = total_score
