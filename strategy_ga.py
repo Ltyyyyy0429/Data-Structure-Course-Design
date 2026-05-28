@@ -365,6 +365,7 @@ def ga_dispatch(
         actions.append({
             "vehicle_id": veh["id"],
             "task_id": task["id"],
+            "target_node": t_node,
             "action": "assign",
             "path": path,
         })

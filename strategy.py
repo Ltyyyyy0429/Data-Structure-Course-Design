@@ -143,6 +143,7 @@ class Dispatcher:
             actions.append({
                 'vehicle_id': veh['id'],
                 'task_id': task['id'],
+                'target_node': task_node,
                 'action': 'assign',
                 'path': item['path'],
                 'load_amount': assign_weight, 
@@ -236,6 +237,7 @@ class Dispatcher:
             actions.append({
                 'vehicle_id': vehicle['id'],
                 'task_id': task['id'],
+                'target_node': target_node,
                 'action': 'assign',
                 'path': path
             })
@@ -297,6 +299,7 @@ class Dispatcher:
                 actions.append({
                     'vehicle_id': vehicle['id'],
                     'task_id': best_task['id'],
+                    'target_node': int(best_task.get('node_id', 0)),
                     'action': 'assign',
                     'path': best_path
                 })
@@ -436,6 +439,7 @@ class Dispatcher:
                     actions.append({
                         'vehicle_id': vehicle['id'],
                         'task_id': best_task['id'],
+                        'target_node': int(best_task.get('node_id', 0)),
                         'action': 'assign',
                         'path': best_path
                     })

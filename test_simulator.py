@@ -1,4 +1,61 @@
-from simulator import Simulator
+from simulator import Simulator, TaskStatus, VehicleStatus
+
+
+def build_load_test_graph():
+    """Create a tiny connected graph for load lifecycle checks."""
+    return {
+        "nodes": [
+            {"id": 1, "x": 0, "y": 0, "type": "depot"},
+            {"id": 2, "x": 10, "y": 0, "type": "task_point"},
+            {"id": 3, "x": 20, "y": 0, "type": "task_point"},
+            {"id": 4, "x": 5, "y": 10, "type": "charging_station"},
+        ],
+        "edges": [
+            {"from_node": 1, "to_node": 2, "distance": 10},
+            {"from_node": 2, "to_node": 1, "distance": 10},
+            {"from_node": 2, "to_node": 3, "distance": 10},
+            {"from_node": 3, "to_node": 2, "distance": 10},
+            {"from_node": 1, "to_node": 4, "distance": 10},
+            {"from_node": 4, "to_node": 1, "distance": 10},
+            {"from_node": 2, "to_node": 4, "distance": 10},
+            {"from_node": 4, "to_node": 2, "distance": 10},
+            {"from_node": 3, "to_node": 4, "distance": 10},
+            {"from_node": 4, "to_node": 3, "distance": 10},
+        ],
+    }
+
+
+def test_vehicle_load_lifecycle():
+    """Vehicle.load should mean current onboard cargo, not cumulative weight."""
+    sim = Simulator(build_load_test_graph(), scale="small", strategy="nearest")
+    sim.load_capacity = 1000.0
+    vehicle = sim.vehicles["v1"]
+    vehicle.load = 0.0
+
+    sim.add_test_task("load_t1", 2, 300, 0, 300)
+    sim._apply_dispatch([{"action": "assign", "vehicle_id": "v1", "task_id": "load_t1"}])
+    assert vehicle.load == 300.0, "assigned cargo should be loaded onto the vehicle"
+    assert sim.tasks["load_t1"].status == TaskStatus.ASSIGNED
+
+    vehicle.current_node = 2
+    vehicle.status = VehicleStatus.IDLE
+    sim._check_tasks_completion()
+    assert sim.tasks["load_t1"].status == TaskStatus.COMPLETED
+    assert vehicle.load == 0.0, "completed delivery should unload cargo"
+
+    sim.add_test_task("load_t2", 3, 800, 0, 300)
+    sim._apply_dispatch([{"action": "assign", "vehicle_id": "v1", "task_id": "load_t2"}])
+    assert sim.tasks["load_t2"].status == TaskStatus.ASSIGNED
+    assert vehicle.load == 800.0, "vehicle should be able to take a later feasible task"
+
+    sim2 = Simulator(build_load_test_graph(), scale="small", strategy="nearest")
+    sim2.load_capacity = 1000.0
+    vehicle2 = sim2.vehicles["v1"]
+    vehicle2.load = 900.0
+    sim2.add_test_task("overload_t", 2, 200, 0, 300)
+    sim2._apply_dispatch([{"action": "assign", "vehicle_id": "v1", "task_id": "overload_t"}])
+    assert sim2.tasks["overload_t"].status == TaskStatus.WAITING
+    assert vehicle2.load == 900.0, "overloaded assignment must not change current load"
 
 def run_simulation(strategy_name, sim_time):
     # ===================== 全新10节点扩容路网（直接替换原有路网） =====================
@@ -94,6 +151,9 @@ def run_simulation(strategy_name, sim_time):
 
 
 if __name__ == "__main__":
+    test_vehicle_load_lifecycle()
+    print("Vehicle load lifecycle tests passed.")
+
     print("新能源物流车队调度仿真（扩容路网版）")
     print("="*60)
 
