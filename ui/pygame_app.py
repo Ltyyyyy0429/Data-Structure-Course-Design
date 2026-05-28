@@ -1283,21 +1283,40 @@ def draw_summary_card(
     badge_rect = pygame.Rect(inner.right - badge_w, inner.top - scale_px(1, 1, 2), badge_w, badge_h)
     draw_status_badge(surface, run_label, fonts, badge_rect, WARNING if paused else SUCCESS)
 
-    row_h = max(scale_px(19, 19, 23), fonts.body.get_height() + scale_px(4, 4, 6))
-    y = inner.top + scale_px(26, 26, 30)
-    y = draw_metric_row(surface, labels["time"], f"{safe_get_metric(metrics, 'current_time', 0)} min", fonts, inner, y, line_height=row_h) or y
-    strategy = shorten_text(safe_get_metric(metrics, "strategy", "-"), 12)
-    y = draw_metric_row(surface, labels["strategy"], strategy, fonts, inner, y, line_height=row_h) or y
     difficulty = safe_get_metric(metrics, "difficulty", None)
     scale = safe_get_metric(metrics, "scale", "-")
+    strategy = shorten_text(safe_get_metric(metrics, "strategy", "-"), 12)
+    summary_rows = [
+        (labels["time"], f"{safe_get_metric(metrics, 'current_time', 0)} min", 14),
+        (labels["strategy"], strategy, 14),
+    ]
     if difficulty is not None:
         mode_value = f"{shorten_text(difficulty, 7)} / {shorten_text(scale, 8)}"
-        y = draw_metric_row(surface, "Mode", mode_value, fonts, inner, y, line_height=row_h, value_chars=18) or y
+        summary_rows.append(("Mode", mode_value, 18))
     else:
-        y = draw_metric_row(surface, labels["scale"], scale, fonts, inner, y, line_height=row_h) or y
+        summary_rows.append((labels["scale"], scale, 14))
     vehicle_count = safe_get_metric(metrics, "vehicle_count", None)
     if vehicle_count is not None:
-        draw_metric_row(surface, labels["vehicle_count"], vehicle_count, fonts, inner, y, line_height=row_h)
+        summary_rows.append((labels["vehicle_count"], vehicle_count, 10))
+
+    y = inner.top + scale_px(24, 22, 28)
+    available_h = max(1, inner.bottom - y)
+    default_row_h = max(scale_px(18, 18, 22), fonts.body.get_height() + scale_px(3, 3, 5))
+    row_h = min(default_row_h, max(scale_px(16, 16, 19), available_h // max(1, len(summary_rows))))
+    for label, value, value_chars in summary_rows:
+        next_y = draw_metric_row(
+            surface,
+            label,
+            value,
+            fonts,
+            inner,
+            y,
+            line_height=row_h,
+            value_chars=value_chars,
+        )
+        if next_y is None:
+            break
+        y = next_y
 
 
 def draw_metrics_card(surface: pygame.Surface, rect: pygame.Rect, metrics: Dict, fonts: FontSet, labels: Dict) -> None:
@@ -1412,7 +1431,7 @@ def draw_panel(surface: pygame.Surface, state: Dict, fonts: FontSet, paused: boo
     card_w = PANEL_RECT.width - panel_padding * 2
     gap = scale_px(10, 10, 14)
 
-    summary_rect = pygame.Rect(x, y, card_w, scale_px(118, 118, 150))
+    summary_rect = pygame.Rect(x, y, card_w, scale_px(136, 136, 164))
     draw_summary_card(surface, summary_rect, metrics, fonts, labels, paused)
 
     y += summary_rect.height + gap
