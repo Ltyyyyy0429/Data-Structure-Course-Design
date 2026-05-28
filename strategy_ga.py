@@ -1,23 +1,16 @@
 # strategy_ga.py
 """Genetic Algorithm scheduling strategy for the logistics fleet simulator.
 
-Encoding: each chromosome is a list of length n (idle vehicles), where
-each gene is a task index (0..m-1) or -1 for no assignment.  Each task
-may be assigned to at most one vehicle.
-
-The GA runs one lightweight evolution per dispatch tick (small population,
-few generations) and returns action dicts in the same format as the other
-strategies.
+已与 Hybrid 策略完成对齐，共享评分公式、距离剪枝与电池安全阈值。
 """
 
 from __future__ import annotations
 
 import random
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from simulator.pathfinder_adapter import RealPathfinder
-
 
 # ---------------------------------------------------------------------------
 # GA hyper-parameters (tunable)
@@ -29,39 +22,10 @@ CROSSOVER_RATE = 0.85
 TOURNAMENT_SIZE = 3
 ELITE_COUNT = 2
 
-# Fitness scoring weights (same semantics as energy_aware_hybrid)
-BASE_SCORE = 30.0
-ALPHA = 40.0       # weight bonus max
-BETA = 30.0        # urgency bonus max
-GAMMA = 0.1        # distance penalty per km
-DELTA = 20.0       # low-battery penalty max (only when battery < 50 %)
-EPSILON = 2.0      # charger queue penalty per vehicle
-SAFETY_MARGIN = 1.0
+# 移除了原有的写死权重，统一从 dispatcher 获取
 
-# Hard-constraint penalty — large enough to dominate any feasible solution
+# Hard-constraint penalty
 INFEASIBLE_PENALTY = 1e9
-
-
-# ---------------------------------------------------------------------------
-# helpers
-# ---------------------------------------------------------------------------
-
-def _as_float(value, default: float = 0.0) -> float:  # mirrors strategy.Dispatcher._as_float
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return default
-
-
-def _is_load_feasible(vehicle: dict, task: dict, default_capacity: float = 1000.0) -> bool:  # mirrors strategy.Dispatcher._is_load_feasible
-    cur = _as_float(vehicle.get("load", 0))
-    w = _as_float(task.get("weight", 0))
-    cap = _as_float(
-        vehicle.get("max_load", vehicle.get("load_capacity", vehicle.get("capacity", default_capacity))),
-        default_capacity,
-    )
-    return cur + w <= cap
-
 
 # ---------------------------------------------------------------------------
 # GA core
@@ -70,7 +34,6 @@ def _is_load_feasible(vehicle: dict, task: dict, default_capacity: float = 1000.
 def _build_chromosome(
     n_vehicles: int, n_tasks: int, veh_task_feasible: list[list[bool]],
 ) -> list[int]:
-    """Create a random chromosome respecting load feasibility and 1-to-1 task constraint."""
     chromo = [-1] * n_vehicles
     available = list(range(n_tasks))
     random.shuffle(available)
@@ -87,11 +50,9 @@ def _build_chromosome(
                 break
     return chromo
 
-
 def _mutate(
     chromo: list[int], n_tasks: int, veh_task_feasible: list[list[bool]], rate: float,
 ) -> list[int]:
-    """In-place mutation: randomly reassign or clear genes."""
     taken = {g for g in chromo if g >= 0}
     for vi in range(len(chromo)):
         if random.random() >= rate:
@@ -99,7 +60,6 @@ def _mutate(
         old = chromo[vi]
         if old >= 0:
             taken.discard(old)
-        # pick a new task that is not taken
         candidates = [t for t in range(n_tasks) if t not in taken and veh_task_feasible[vi][t]]
         if candidates:
             new_t = random.choice(candidates)
@@ -109,9 +69,7 @@ def _mutate(
             chromo[vi] = -1
     return chromo
 
-
 def _crossover(parent_a: list[int], parent_b: list[int], n_tasks: int) -> tuple[list[int], list[int]]:
-    """Uniform crossover per vehicle position, then repair duplicate tasks."""
     n = len(parent_a)
     child_a = [-1] * n
     child_b = [-1] * n
@@ -125,8 +83,7 @@ def _crossover(parent_a: list[int], parent_b: list[int], n_tasks: int) -> tuple[
         seen: set[int] = set()
         for i in range(n):
             t = child[i]
-            if t < 0:
-                continue
+            if t < 0: continue
             if t in seen:
                 child[i] = -1
             else:
@@ -134,7 +91,6 @@ def _crossover(parent_a: list[int], parent_b: list[int], n_tasks: int) -> tuple[
         return child
 
     return _repair(child_a), _repair(child_b)
-
 
 # ---------------------------------------------------------------------------
 # fitness
@@ -145,47 +101,42 @@ def _compute_fitness(
     pathfinder: RealPathfinder, state: dict,
     dist_cache: dict[tuple[int, int], tuple[list[int], float]],
     charger_cache: dict[int, tuple[int, float, int]],
-    consume_rate: float, load_capacity: float,
+    dispatcher: Any, config: dict,
 ) -> float:
-    """Return the total fitness score for *chromo*.  Higher is better."""
-
     metrics = state.get("metrics", {})
-    current_time = _as_float(
-        state.get("current_time", metrics.get("current_time", 0))
-    )
+    current_time = dispatcher._as_float(state.get("current_time", metrics.get("current_time", 0)))
     chargers = state.get("charging_stations", state.get("chargers", []))
 
     total = 0.0
     assigned_tasks: set[int] = set()
 
+    # 从统一配置读取参数
+    max_prune_radius = config["prune_radius"]
+    dynamic_soc_trigger = config["soc_trigger"]
+
     for vi, ti in enumerate(chromo):
-        if ti < 0:
-            continue
-        if ti in assigned_tasks:          # duplicate — should not happen after repair
-            return -INFEASIBLE_PENALTY
+        if ti < 0: continue
+        if ti in assigned_tasks: return -INFEASIBLE_PENALTY
         assigned_tasks.add(ti)
 
         veh = vehicles[vi]
         task = tasks[ti]
 
-        if not _is_load_feasible(veh, task, load_capacity):
+        if not dispatcher._is_load_feasible(veh, task):
             return -INFEASIBLE_PENALTY
 
         v_node = int(veh.get("current_node", 0))
         t_node = int(task.get("node_id", 0))
-        v_battery = _as_float(veh.get("battery", 100))
-        v_max_battery = max(_as_float(veh.get("max_battery", v_battery)), 1.0)
+        v_battery = dispatcher._as_float(veh.get("battery", 100))
+        v_max_battery = max(dispatcher._as_float(veh.get("max_battery", v_battery)), 1.0)
         battery_ratio = max(0.0, min(1.0, v_battery / v_max_battery))
-        v_speed = _as_float(veh.get("speed", 1.0), 1.0)
-
-        v_capacity = _as_float(
-            veh.get("max_load", veh.get("load_capacity", veh.get("capacity", load_capacity))),
-            load_capacity,
+        v_speed = dispatcher._as_float(veh.get("speed", 1.0), 1.0)
+        v_capacity = dispatcher._as_float(
+            veh.get("max_load", veh.get("load_capacity", veh.get("capacity", dispatcher.load_capacity))),
+            dispatcher.load_capacity,
         )
-        if v_capacity <= 0:
-            v_capacity = 1000.0
+        if v_capacity <= 0: v_capacity = 1000.0
 
-        # distance vehicle → task  (cached)
         key = (v_node, t_node)
         if key in dist_cache:
             path, d1 = dist_cache[key]
@@ -196,66 +147,55 @@ def _compute_fitness(
                 path, d1 = [], float("inf")
             dist_cache[key] = (path, d1)
 
-        if d1 == float("inf"):
+        # 结合任务剪枝
+        if d1 > max_prune_radius or d1 == float("inf"):
             return -INFEASIBLE_PENALTY
 
-        # nearest charger from task node  (cached)
         if t_node in charger_cache:
             _, d2, queue_len = charger_cache[t_node]
         else:
-            d2 = float("inf")
-            best_n, best_d, best_q = 0, float("inf"), 0
-            for ch in chargers:
-                ch_node = int(ch.get("node_id", ch.get("node", 0)))
-                try:
-                    _, dist = pathfinder.find_path_and_distance(t_node, ch_node)
-                except Exception:
-                    dist = float("inf")
-                if dist < best_d:
-                    best_d = dist
-                    best_n = ch_node
-                    best_q = int(ch.get("queue_length", 0))
-            d2 = best_d
-            queue_len = best_q
-            charger_cache[t_node] = (best_n, best_d, best_q)
+            # 统一调用 Hybrid 寻找充电站算法
+            best_n, d2, queue_len = dispatcher._get_nearest_charger_info(t_node, chargers)
+            charger_cache[t_node] = (best_n, d2, queue_len)
 
-        if d2 == float("inf"):
-            return -INFEASIBLE_PENALTY
+        if d2 == float("inf"): return -INFEASIBLE_PENALTY
 
-        # --- time feasibility (death-march guard, same as hybrid) ---
-        deadline = _as_float(task.get("deadline", 9999))
+        deadline = dispatcher._as_float(task.get("deadline", 9999))
         time_left = deadline - current_time
         time_to_reach = d1 / v_speed
-        if time_to_reach >= time_left:
+        if time_to_reach >= time_left: return -INFEASIBLE_PENALTY
+
+        required_energy = (d1 + d2) * dispatcher.consume_rate
+        if v_battery < required_energy + dispatcher.safety_margin:
             return -INFEASIBLE_PENALTY
 
-        required_energy = (d1 + d2) * consume_rate
-        if v_battery < required_energy + SAFETY_MARGIN:
-            return -INFEASIBLE_PENALTY
-
-        # --- composite score (same semantics as energy_aware_hybrid) ---
-        task_weight = _as_float(task.get("weight", 0), 0.0)
+        # --- 像素级还原 Hybrid 打分公式 ---
+        task_weight = dispatcher._as_float(task.get("weight", 0), 0.0)
         load_ratio = min(1.0, task_weight / v_capacity)
-        profit_score = ALPHA * load_ratio
+        profit_score = dispatcher.alpha * load_ratio
 
         buffer_time = max(0.0, time_left - time_to_reach)
-        urgency_score = BETA * (1.0 / (buffer_time + 1.0))
+        urgency_score = dispatcher.beta * (1.0 / (buffer_time + 1.0))
 
-        distance_penalty = GAMMA * d1
-        if battery_ratio > 0.5:
+        if battery_ratio >= dynamic_soc_trigger:
+            adaptive_gamma = dispatcher.gamma * 0.5
+        else:
+            severity = ((dynamic_soc_trigger - battery_ratio) / dynamic_soc_trigger) ** 2
+            adaptive_gamma = dispatcher.gamma * (1.0 + 5.0 * severity)
+        distance_penalty = adaptive_gamma * d1
+        queue_penalty = dispatcher.epsilon * queue_len
+
+        if battery_ratio > dynamic_soc_trigger:
             battery_risk_penalty = 0.0
         else:
-            battery_risk_penalty = DELTA * ((0.5 - battery_ratio) / 0.5) ** 2
-        queue_penalty = EPSILON * queue_len
+            battery_risk_penalty = dispatcher.delta * ((dynamic_soc_trigger - battery_ratio) / dynamic_soc_trigger) ** 2
 
-        task_score = BASE_SCORE + profit_score + urgency_score \
-                     - distance_penalty - battery_risk_penalty - queue_penalty
+        task_score = dispatcher.base_score + profit_score + urgency_score - distance_penalty - battery_risk_penalty - queue_penalty
         task_score = max(0.0, task_score)
 
         total += task_score
 
     return total
-
 
 # ---------------------------------------------------------------------------
 # main entry point called by Dispatcher.dispatch()
@@ -266,39 +206,57 @@ def ga_dispatch(
     unassigned_tasks: list[dict],
     pathfinder: RealPathfinder,
     state: dict,
-    *,
-    consume_rate: float = 0.5,
-    load_capacity: float = 1000.0,
+    dispatcher: Any,
     pop_size: int = POP_SIZE,
     generations: int = GENERATIONS,
 ) -> list[dict]:
-    """Run one GA evolution and return a list of action dicts."""
 
     n_v = len(idle_vehicles)
     n_t = len(unassigned_tasks)
 
-    if n_v == 0 or n_t == 0:
-        return []
+    if n_v == 0 or n_t == 0: return []
 
-    # pre-compute load feasibility matrix
-    veh_task_feasible: list[list[bool]] = []
-    for v in idle_vehicles:
-        row = [_is_load_feasible(v, t, load_capacity) for t in unassigned_tasks]
-        veh_task_feasible.append(row)
+    # 统一提取 scale 设定
+    config = dispatcher._get_scale_config(state)
+    max_prune_radius = config["prune_radius"]
 
-    # if no feasible assignments exist at all, bail out
-    if not any(any(row) for row in veh_task_feasible):
-        return []
-
-    # caches (cleared per tick)
     dist_cache: dict[tuple[int, int], tuple[list[int], float]] = {}
     charger_cache: dict[int, tuple[int, float, int]] = {}
+
+    # 生成矩阵前引入 Hybrid 距离剪枝逻辑
+    veh_task_feasible: list[list[bool]] = []
+    for v in idle_vehicles:
+        row = []
+        v_node = int(v.get("current_node", 0))
+        for t in unassigned_tasks:
+            t_node = int(t.get("node_id", 0))
+            is_feasible = dispatcher._is_load_feasible(v, t)
+            
+            if is_feasible:
+                key = (v_node, t_node)
+                if key not in dist_cache:
+                    try:
+                        path, d1 = pathfinder.find_path_and_distance(v_node, t_node)
+                    except Exception:
+                        path, d1 = [], float("inf")
+                    dist_cache[key] = (path, d1)
+                else:
+                    d1 = dist_cache[key][1]
+                
+                # Prune 过远任务
+                if d1 > max_prune_radius:
+                    is_feasible = False
+                    
+            row.append(is_feasible)
+        veh_task_feasible.append(row)
+
+    if not any(any(row) for row in veh_task_feasible): return []
 
     # ---- initialise population ----
     pop = [_build_chromosome(n_v, n_t, veh_task_feasible) for _ in range(max(pop_size, ELITE_COUNT + 2))]
     fitness = [
         _compute_fitness(c, idle_vehicles, unassigned_tasks, pathfinder, state,
-                         dist_cache, charger_cache, consume_rate, load_capacity)
+                         dist_cache, charger_cache, dispatcher, config)
         for c in pop
     ]
 
@@ -307,15 +265,11 @@ def ga_dispatch(
     # ---- evolve ----
     for gen in range(generations):
         new_pop: list[list[int]] = []
-
-        # elitism
         sorted_idx = sorted(range(len(pop)), key=lambda i: fitness[i], reverse=True)
         for ei in sorted_idx[:ELITE_COUNT]:
             new_pop.append(pop[ei][:])
 
-        # fill the rest
         while len(new_pop) < pop_size:
-            # tournament selection
             if random.random() < CROSSOVER_RATE and len(new_pop) + 2 <= pop_size:
                 t_a = random.sample(range(len(pop)), min(TOURNAMENT_SIZE, len(pop)))
                 t_b = random.sample(range(len(pop)), min(TOURNAMENT_SIZE, len(pop)))
@@ -330,13 +284,10 @@ def ga_dispatch(
                 child = _mutate(parent[:], n_t, veh_task_feasible, MUTATION_RATE)
                 new_pop.append(child)
 
-        # truncate to pop_size
         pop = new_pop[:pop_size]
-
-        # re-evaluate
         fitness = [
             _compute_fitness(c, idle_vehicles, unassigned_tasks, pathfinder, state,
-                             dist_cache, charger_cache, consume_rate, load_capacity)
+                             dist_cache, charger_cache, dispatcher, config)
             for c in pop
         ]
         best_idx = max(range(len(pop)), key=lambda i: fitness[i])
@@ -345,8 +296,7 @@ def ga_dispatch(
     best = pop[best_idx]
     actions: list[dict] = []
     for vi, ti in enumerate(best):
-        if ti < 0:
-            continue
+        if ti < 0: continue
         veh = idle_vehicles[vi]
         task = unassigned_tasks[ti]
         v_node = int(veh.get("current_node", 0))
