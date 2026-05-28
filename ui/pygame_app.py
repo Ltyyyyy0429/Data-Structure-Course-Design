@@ -103,11 +103,18 @@ except ImportError:
     )
 
 
-WINDOW_WIDTH = 1100
-WINDOW_HEIGHT = 700
+DEFAULT_WINDOW_WIDTH = 1100
+DEFAULT_WINDOW_HEIGHT = 700
+MIN_WINDOW_WIDTH = 1100
+MIN_WINDOW_HEIGHT = 700
+MAX_WINDOW_WIDTH = 1600
+MAX_WINDOW_HEIGHT = 1000
+WINDOW_WIDTH = DEFAULT_WINDOW_WIDTH
+WINDOW_HEIGHT = DEFAULT_WINDOW_HEIGHT
 MAP_RECT = pygame.Rect(24, 24, 730, 604)
 PANEL_RECT = pygame.Rect(778, 24, 298, 604)
 CONTROL_BAR_RECT = pygame.Rect(24, 646, 1052, 34)
+LAYOUT_SCALE = 1.0
 WORLD_WIDTH = 100
 WORLD_HEIGHT = 100
 FPS = 60
@@ -116,6 +123,71 @@ DEFAULT_MAX_BATTERY_KWH = {
     "medium": 100.0,
     "hard": 80.0,
 }
+
+
+def configure_responsive_layout(screen_size: Tuple[int, int] | None = None) -> Tuple[int, int]:
+    """Fit the Pygame window and major UI regions to the current screen.
+
+    The default 1100x700 layout remains the fallback.  When a normal display is
+    available, the window uses about 90% of the notebook screen while keeping
+    the map, side dashboard, and bottom control bar visually balanced.
+    """
+
+    global WINDOW_WIDTH, WINDOW_HEIGHT, MAP_RECT, PANEL_RECT, CONTROL_BAR_RECT, LAYOUT_SCALE
+
+    if screen_size is None:
+        try:
+            display_info = pygame.display.Info()
+            screen_width = int(display_info.current_w)
+            screen_height = int(display_info.current_h)
+        except pygame.error:
+            screen_width = DEFAULT_WINDOW_WIDTH
+            screen_height = DEFAULT_WINDOW_HEIGHT
+    else:
+        screen_width, screen_height = screen_size
+
+    if screen_width <= 0 or screen_height <= 0:
+        screen_width = DEFAULT_WINDOW_WIDTH
+        screen_height = DEFAULT_WINDOW_HEIGHT
+
+    edge_margin_width = 80 if screen_width >= 1280 else 24
+    edge_margin_height = 80 if screen_height >= 820 else 24
+    max_allowed_width = max(900, screen_width - edge_margin_width)
+    max_allowed_height = max(620, screen_height - edge_margin_height)
+
+    target_width = int(screen_width * 0.92)
+    target_height = int(screen_height * 0.88)
+    WINDOW_WIDTH = min(max(target_width, MIN_WINDOW_WIDTH), max_allowed_width, MAX_WINDOW_WIDTH)
+    WINDOW_HEIGHT = min(max(target_height, MIN_WINDOW_HEIGHT), max_allowed_height, MAX_WINDOW_HEIGHT)
+    LAYOUT_SCALE = max(1.0, min(1.28, min(WINDOW_WIDTH / DEFAULT_WINDOW_WIDTH, WINDOW_HEIGHT / DEFAULT_WINDOW_HEIGHT)))
+
+    margin = max(20, min(30, int(WINDOW_WIDTH * 0.018)))
+    gap = max(16, min(24, int(WINDOW_WIDTH * 0.016)))
+    control_height = max(36, min(44, int(WINDOW_HEIGHT * 0.048)))
+    control_top = WINDOW_HEIGHT - margin - control_height
+    content_bottom = control_top - gap
+    content_height = max(420, content_bottom - margin)
+
+    panel_width = max(320, min(400, int(WINDOW_WIDTH * 0.27)))
+    map_width = max(620, WINDOW_WIDTH - margin * 2 - gap - panel_width)
+    panel_left = margin + map_width + gap
+
+    MAP_RECT = pygame.Rect(margin, margin, map_width, content_height)
+    PANEL_RECT = pygame.Rect(panel_left, margin, panel_width, content_height)
+    CONTROL_BAR_RECT = pygame.Rect(margin, control_top, WINDOW_WIDTH - margin * 2, control_height)
+
+    return WINDOW_WIDTH, WINDOW_HEIGHT
+
+
+def scale_px(value: int | float, min_value: int | None = None, max_value: int | None = None) -> int:
+    """Scale a pixel value with the current responsive UI scale."""
+
+    result = int(round(value * LAYOUT_SCALE))
+    if min_value is not None:
+        result = max(min_value, result)
+    if max_value is not None:
+        result = min(max_value, result)
+    return result
 
 
 TEXT = {
@@ -146,8 +218,8 @@ TEXT = {
         "paused": "已暂停",
         "running": "运行中",
         "help1": "SPACE 暂停/继续",
-        "help2": "1 nearest  2 largest  3 hybrid",
-        "help3": "R 重置  ESC 退出",
+        "help2": "1 nearest  2 largest  3 hybrid  4 GA",
+        "help3": "D 难度  S/M/L/X 规模  R 重置  ESC 退出",
         "queue": "队列",
     },
     "en": {
@@ -177,8 +249,8 @@ TEXT = {
         "paused": "Paused",
         "running": "Running",
         "help1": "SPACE pause/resume",
-        "help2": "1 nearest  2 largest  3 hybrid",
-        "help3": "R reset  ESC quit",
+        "help2": "1 nearest  2 largest  3 hybrid  4 GA",
+        "help3": "D difficulty  S/M/L/X scale  R reset  ESC quit",
         "queue": "Queue",
     },
 }
@@ -217,6 +289,8 @@ class DemoWorld:
 
     def __init__(self) -> None:
         self.strategy = "nearest"
+        self.difficulty = "easy"
+        self.scale = "small"
         self.reset()
 
     def reset(self) -> None:
@@ -267,8 +341,16 @@ class DemoWorld:
         ]
 
     def set_strategy(self, strategy: str) -> None:
-        if strategy in {"nearest", "largest", "energy_aware_hybrid"}:
+        if strategy in {"nearest", "largest", "energy_aware_hybrid", "genetic_algorithm"}:
             self.strategy = strategy
+
+    def set_difficulty(self, difficulty: str) -> None:
+        if difficulty in {"easy", "medium", "hard"}:
+            self.difficulty = difficulty
+
+    def set_scale(self, scale: str) -> None:
+        if scale in {"small", "medium", "large", "extra_large"}:
+            self.scale = scale
 
     def update(self, dt: float) -> None:
         self.current_time += dt * 2.2
@@ -313,14 +395,26 @@ class DemoWorld:
 
         completed_tasks = int(self.current_time // 7)
         timeout_tasks = int(self.current_time // 31)
-        strategy_bonus = 25 if self.strategy == "largest" else 45 if self.strategy == "energy_aware_hybrid" else 0
-        distance_factor = 13.5 if self.strategy == "nearest" else 14.2 if self.strategy == "energy_aware_hybrid" else 15.0
+        strategy_bonus = {
+            "nearest": 0,
+            "largest": 25,
+            "energy_aware_hybrid": 45,
+            "genetic_algorithm": 55,
+        }.get(self.strategy, 0)
+        distance_factor = {
+            "nearest": 13.5,
+            "largest": 15.0,
+            "energy_aware_hybrid": 14.2,
+            "genetic_algorithm": 13.8,
+        }.get(self.strategy, 13.5)
+        difficulty_penalty = {"easy": 0, "medium": 30, "hard": 65}.get(self.difficulty, 0)
 
         metrics = {
             "current_time": int(self.current_time),
-            "scale": "small",
+            "scale": self.scale,
+            "difficulty": self.difficulty,
             "strategy": self.strategy,
-            "total_score": completed_tasks * 120 - timeout_tasks * 80 + strategy_bonus,
+            "total_score": completed_tasks * 120 - timeout_tasks * 80 + strategy_bonus - difficulty_penalty,
             "completed_tasks": completed_tasks,
             "timeout_tasks": timeout_tasks,
             "total_distance": round(self.current_time * distance_factor, 1),
@@ -402,18 +496,18 @@ def choose_fonts() -> FontSet:
     if font_path:
         return FontSet(
             language="zh",
-            title=pygame.font.Font(font_path, 25),
-            normal=pygame.font.Font(font_path, 19),
-            small=pygame.font.Font(font_path, 16),
-            tiny=pygame.font.Font(font_path, 13),
+            title=pygame.font.Font(font_path, scale_px(27, 27, 36)),
+            normal=pygame.font.Font(font_path, scale_px(21, 21, 27)),
+            small=pygame.font.Font(font_path, scale_px(18, 18, 23)),
+            tiny=pygame.font.Font(font_path, scale_px(14, 14, 18)),
         )
 
     return FontSet(
         language="en",
-        title=pygame.font.SysFont(None, 25),
-        normal=pygame.font.SysFont(None, 19),
-        small=pygame.font.SysFont(None, 16),
-        tiny=pygame.font.SysFont(None, 13),
+        title=pygame.font.SysFont(None, scale_px(27, 27, 36)),
+        normal=pygame.font.SysFont(None, scale_px(21, 21, 27)),
+        small=pygame.font.SysFont(None, scale_px(18, 18, 23)),
+        tiny=pygame.font.SysFont(None, scale_px(14, 14, 18)),
     )
 
 
@@ -440,8 +534,10 @@ def shorten_text(text, max_chars: int) -> str:
     text = str(text)
     replacements = {
         "energy_aware_hybrid": "hybrid",
+        "genetic_algorithm": "GA",
         "waiting_for_charge": "wait_charge",
         "delivering": "moving",
+        "extra_large": "XL",
     }
     text = replacements.get(text, text)
     if len(text) <= max_chars:
@@ -993,17 +1089,28 @@ def format_battery_display(vehicle: Dict, metrics: Dict | None = None) -> Tuple[
 
 
 def draw_card(surface: pygame.Surface, rect: pygame.Rect, title: str, fonts: FontSet) -> pygame.Rect:
+    padding = scale_px(12, 12, 16)
+    title_y = rect.top + scale_px(8, 8, 12)
+    divider_y = rect.top + scale_px(30, 30, 38)
+    body_top = rect.top + scale_px(34, 34, 44)
+    body_bottom_padding = scale_px(10, 10, 14)
+
     pygame.draw.rect(surface, PANEL_CARD, rect, border_radius=8)
     pygame.draw.rect(surface, PANEL_BORDER, rect, width=1, border_radius=8)
-    draw_text(surface, shorten_text(title, 24), fonts.small, TEXT_MAIN, (rect.left + 12, rect.top + 8))
+    draw_text(surface, shorten_text(title, 24), fonts.small, TEXT_MAIN, (rect.left + padding, title_y))
     pygame.draw.line(
         surface,
         PANEL_BORDER,
-        (rect.left + 12, rect.top + 30),
-        (rect.right - 12, rect.top + 30),
+        (rect.left + padding, divider_y),
+        (rect.right - padding, divider_y),
         width=1,
     )
-    return pygame.Rect(rect.left + 12, rect.top + 34, rect.width - 24, rect.height - 44)
+    return pygame.Rect(
+        rect.left + padding,
+        body_top,
+        rect.width - padding * 2,
+        max(0, rect.bottom - body_top - body_bottom_padding),
+    )
 
 
 def draw_metric_row(
@@ -1047,7 +1154,7 @@ def draw_status_pill(
     position: Tuple[int, int],
 ) -> None:
     text_surface = fonts.tiny.render(shorten_text(text, 12), True, WHITE)
-    rect = text_surface.get_rect(topleft=position).inflate(14, 6)
+    rect = text_surface.get_rect(topleft=position).inflate(scale_px(14, 14), scale_px(6, 6))
     draw_status_badge(surface, text, fonts, rect, color)
 
 
@@ -1081,7 +1188,7 @@ def draw_metric_big_number(
     draw_text(surface, shorten_text(label, 18), fonts.tiny, TEXT_MUTED, (rect.left, rect.top))
     value_text = shorten_text(value, 13)
     value_surface = fonts.title.render(value_text, True, color)
-    surface.blit(value_surface, (rect.left, rect.top + 15))
+    surface.blit(value_surface, (rect.left, rect.top + scale_px(15, 15)))
 
 
 def draw_summary_card(
@@ -1097,25 +1204,28 @@ def draw_summary_card(
     draw_text(surface, shorten_text(project_name, 17), fonts.tiny, TEXT_MAIN, (inner.left, inner.top))
 
     run_label = labels["paused"] if paused else labels["running"]
-    badge_rect = pygame.Rect(inner.right - 70, inner.top - 2, 70, 20)
+    badge_w = scale_px(70, 70, 86)
+    badge_h = scale_px(20, 20, 24)
+    badge_rect = pygame.Rect(inner.right - badge_w, inner.top - 2, badge_w, badge_h)
     draw_status_badge(surface, run_label, fonts, badge_rect, WARNING if paused else SUCCESS)
 
-    y = inner.top + 20
-    y = draw_metric_row(surface, labels["time"], f"{safe_get_metric(metrics, 'current_time', 0)} min", fonts, inner, y, line_height=16) or y
+    row_h = max(scale_px(18, 18, 23), fonts.tiny.get_height() + scale_px(5, 5, 7))
+    y = inner.top + scale_px(22, 22, 28)
+    y = draw_metric_row(surface, labels["time"], f"{safe_get_metric(metrics, 'current_time', 0)} min", fonts, inner, y, line_height=row_h) or y
     strategy = shorten_text(safe_get_metric(metrics, "strategy", "-"), 12)
-    y = draw_metric_row(surface, labels["strategy"], strategy, fonts, inner, y, line_height=16) or y
+    y = draw_metric_row(surface, labels["strategy"], strategy, fonts, inner, y, line_height=row_h) or y
     difficulty = safe_get_metric(metrics, "difficulty", None)
     scale = safe_get_metric(metrics, "scale", "-")
     if difficulty is not None:
         mode_value = f"{shorten_text(difficulty, 7)} / {shorten_text(scale, 8)}"
-        draw_metric_row(surface, "Mode", mode_value, fonts, inner, y, line_height=16, value_chars=18)
+        draw_metric_row(surface, "Mode", mode_value, fonts, inner, y, line_height=row_h, value_chars=18)
     else:
-        draw_metric_row(surface, labels["scale"], scale, fonts, inner, y, line_height=16)
+        draw_metric_row(surface, labels["scale"], scale, fonts, inner, y, line_height=row_h)
 
 
 def draw_metrics_card(surface: pygame.Surface, rect: pygame.Rect, metrics: Dict, fonts: FontSet, labels: Dict) -> None:
     inner = draw_card(surface, rect, labels["metrics"], fonts)
-    score_rect = pygame.Rect(inner.left, inner.top, inner.width, 48)
+    score_rect = pygame.Rect(inner.left, inner.top, inner.width, scale_px(56, 52, 72))
     draw_metric_big_number(
         surface,
         labels["score"],
@@ -1125,13 +1235,14 @@ def draw_metrics_card(surface: pygame.Surface, rect: pygame.Rect, metrics: Dict,
         INFO,
     )
 
-    lower_y = inner.top + 55
+    lower_y = score_rect.bottom + scale_px(8, 8, 12)
+    value_offset = max(scale_px(18, 18, 24), fonts.tiny.get_height() + scale_px(3, 3, 5))
     completed = safe_get_metric(metrics, "completed_tasks", 0)
     timeout = safe_get_metric(metrics, "timeout_tasks", 0)
     draw_text(surface, labels.get("completed_short", labels["completed"]), fonts.tiny, TEXT_MUTED, (inner.left, lower_y))
-    draw_text(surface, str(completed), fonts.normal, SUCCESS, (inner.left, lower_y + 16))
+    draw_text(surface, str(completed), fonts.normal, SUCCESS, (inner.left, lower_y + value_offset))
     draw_text_right(surface, labels.get("timeout_short", labels["timeout"]), fonts.tiny, TEXT_MUTED, inner.right, lower_y)
-    draw_text_right(surface, str(timeout), fonts.normal, DANGER, inner.right, lower_y + 16)
+    draw_text_right(surface, str(timeout), fonts.normal, DANGER, inner.right, lower_y + value_offset)
 
 
 def draw_charging_card(surface: pygame.Surface, rect: pygame.Rect, metrics: Dict, fonts: FontSet, labels: Dict) -> None:
@@ -1145,10 +1256,11 @@ def draw_charging_card(surface: pygame.Surface, rect: pygame.Rect, metrics: Dict
     ]
 
     y = inner.top
+    row_h = max(scale_px(17, 17, 22), fonts.tiny.get_height() + scale_px(4, 4, 6))
     for label, value, color in rows:
-        next_y = draw_metric_row(surface, label, value, fonts, inner, y, color, line_height=15, value_chars=11)
+        next_y = draw_metric_row(surface, label, value, fonts, inner, y, color, line_height=row_h, value_chars=11)
         if next_y is None:
-            draw_text(surface, "...", fonts.tiny, TEXT_MUTED, (inner.left, max(inner.top, inner.bottom - 15)))
+            draw_text(surface, "...", fonts.tiny, TEXT_MUTED, (inner.left, max(inner.top, inner.bottom - row_h)))
             break
         y = next_y
 
@@ -1162,15 +1274,15 @@ def draw_vehicle_list_card(
     metrics: Dict | None = None,
 ) -> None:
     inner = draw_card(surface, rect, labels["vehicles"], fonts)
-    row_height = 30
-    max_rows = min(5, max(0, (inner.height - 18) // row_height))
+    row_height = max(scale_px(34, 34, 43), fonts.tiny.get_height() * 2 + scale_px(10, 10, 14))
+    max_rows = min(5, max(0, (inner.height - scale_px(18, 18)) // row_height))
     shown = 0
 
     for index, vehicle in enumerate(vehicles or []):
         if shown >= max_rows:
             break
         row_y = inner.top + shown * row_height
-        if row_y + row_height > inner.bottom - 16:
+        if row_y + row_height > inner.bottom - scale_px(16, 16):
             break
 
         vehicle_id = shorten_text(vehicle.get("id", f"V{index + 1}"), 8)
@@ -1180,23 +1292,28 @@ def draw_vehicle_list_card(
         battery_level, battery_text = get_battery_display(vehicle, metrics)
 
         draw_text(surface, vehicle_id, fonts.tiny, TEXT_MAIN, (inner.left, row_y))
-        badge_rect = pygame.Rect(inner.left + 34, row_y - 2, 68, 19)
+        id_offset = scale_px(36, 34, 44)
+        badge_w = scale_px(68, 68, 86)
+        badge_h = scale_px(19, 19, 24)
+        badge_rect = pygame.Rect(inner.left + id_offset, row_y - 2, badge_w, badge_h)
         draw_status_badge(surface, status, fonts, badge_rect, status_color, max_chars=9)
         if battery_level < 20:
-            low_rect = pygame.Rect(inner.left + 106, row_y - 2, 36, 19)
+            low_rect = pygame.Rect(badge_rect.right + scale_px(4, 4), row_y - 2, scale_px(36, 36, 44), badge_h)
             draw_status_badge(surface, "LOW", fonts, low_rect, DANGER, max_chars=5)
 
-        bar_rect = pygame.Rect(inner.right - 98, row_y, 98, 15)
+        bar_w = min(scale_px(98, 98, 132), max(86, inner.width // 3))
+        bar_h = scale_px(15, 15, 20)
+        bar_rect = pygame.Rect(inner.right - bar_w, row_y, bar_w, bar_h)
         draw_battery_bar(surface, bar_rect, battery_level, battery_text, fonts)
 
         load_value = vehicle.get("load", "N/A")
         load_text = f"{labels['load']}: {shorten_text(load_value, 8)}"
-        draw_text(surface, load_text, fonts.tiny, TEXT_MUTED, (inner.left + 34, row_y + 17))
+        draw_text(surface, load_text, fonts.tiny, TEXT_MUTED, (inner.left + id_offset, row_y + scale_px(18, 17, 23)))
         shown += 1
 
     remaining = max(0, len(vehicles or []) - shown)
     if remaining > 0:
-        draw_text(surface, f"+{remaining} more vehicles", fonts.tiny, TEXT_MUTED, (inner.left, rect.bottom - 22))
+        draw_text(surface, f"+{remaining} more vehicles", fonts.tiny, TEXT_MUTED, (inner.left, rect.bottom - scale_px(22, 22, 28)))
 
 
 def draw_panel(surface: pygame.Surface, state: Dict, fonts: FontSet, paused: bool) -> None:
@@ -1207,24 +1324,25 @@ def draw_panel(surface: pygame.Surface, state: Dict, fonts: FontSet, paused: boo
     pygame.draw.rect(surface, PANEL_BACKGROUND, PANEL_RECT, border_radius=10)
     pygame.draw.rect(surface, PANEL_BORDER, PANEL_RECT, width=1, border_radius=10)
 
-    x = PANEL_RECT.left + 14
-    y = PANEL_RECT.top + 12
-    card_w = PANEL_RECT.width - 28
-    gap = 10
+    panel_padding = scale_px(14, 14, 18)
+    x = PANEL_RECT.left + panel_padding
+    y = PANEL_RECT.top + scale_px(12, 12, 16)
+    card_w = PANEL_RECT.width - panel_padding * 2
+    gap = scale_px(10, 10, 14)
 
-    summary_rect = pygame.Rect(x, y, card_w, 114)
+    summary_rect = pygame.Rect(x, y, card_w, scale_px(124, 124, 158))
     draw_summary_card(surface, summary_rect, metrics, fonts, labels, paused)
 
     y += summary_rect.height + gap
-    metrics_rect = pygame.Rect(x, y, card_w, 118)
+    metrics_rect = pygame.Rect(x, y, card_w, scale_px(136, 136, 170))
     draw_metrics_card(surface, metrics_rect, metrics, fonts, labels)
 
     y += metrics_rect.height + gap
-    charging_rect = pygame.Rect(x, y, card_w, 126)
+    charging_rect = pygame.Rect(x, y, card_w, scale_px(142, 142, 180))
     draw_charging_card(surface, charging_rect, metrics, fonts, labels)
 
     y += charging_rect.height + gap
-    vehicles_h = max(0, PANEL_RECT.bottom - y - 10)
+    vehicles_h = max(0, PANEL_RECT.bottom - y - scale_px(10, 10, 14))
     vehicles_rect = pygame.Rect(x, y, card_w, vehicles_h)
     draw_vehicle_list_card(surface, vehicles_rect, vehicles, fonts, labels, metrics)
 
@@ -1239,17 +1357,20 @@ def draw_control_bar(surface: pygame.Surface, fonts: FontSet) -> None:
         ("1", "Near"),
         ("2", "Max"),
         ("3", "Hybrid"),
+        ("4", "GA"),
+        ("D", "Difficulty"),
         ("S", "Small"),
         ("M", "Medium"),
         ("L", "Large"),
         ("X", "XL"),
         ("ESC", "Quit"),
     ]
-    total_width = sum(measure_key_hint(fonts, key, label) for key, label in hints) + 12 * (len(hints) - 1)
+    hint_gap = scale_px(12, 10, 14)
+    total_width = sum(measure_key_hint(fonts, key, label) for key, label in hints) + hint_gap * (len(hints) - 1)
     if total_width > CONTROL_BAR_RECT.width - 24:
         draw_centered_text(
             surface,
-            "SPACE Pause | R Reset | 1/2/3 Strategy | S/M/L/X Map Scale | ESC Quit",
+            "SPACE Pause | R Reset | 1/2/3/4 Strategy | D Diff | S/M/L/X Scale | ESC Quit",
             fonts.tiny,
             WHITE,
             CONTROL_BAR_RECT.center,
@@ -1257,23 +1378,23 @@ def draw_control_bar(surface: pygame.Surface, fonts: FontSet) -> None:
         return
 
     x = CONTROL_BAR_RECT.centerx - total_width // 2
-    y = CONTROL_BAR_RECT.centery - 10
+    y = CONTROL_BAR_RECT.centery - scale_px(10, 10, 12)
     for key, label in hints:
         used_width = draw_key_hint(surface, key, label, fonts, x, y)
-        x += used_width + 12
+        x += used_width + hint_gap
 
 
 def measure_key_hint(fonts: FontSet, key: str, label: str) -> int:
-    key_width = fonts.tiny.size(key)[0] + 16
+    key_width = fonts.tiny.size(key)[0] + scale_px(16, 16, 22)
     label_width = fonts.tiny.size(label)[0]
-    return key_width + label_width + 8
+    return key_width + label_width + scale_px(8, 8, 12)
 
 
 def draw_key_hint(surface: pygame.Surface, key: str, label: str, fonts: FontSet, x: int, y: int) -> int:
-    key_rect = pygame.Rect(x, y, fonts.tiny.size(key)[0] + 16, 20)
+    key_rect = pygame.Rect(x, y, fonts.tiny.size(key)[0] + scale_px(16, 16, 22), scale_px(20, 20, 25))
     pygame.draw.rect(surface, (229, 235, 243), key_rect, border_radius=5)
     draw_centered_text(surface, key, fonts.tiny, CONTROL_BAR, key_rect.center)
-    draw_text(surface, label, fonts.tiny, WHITE, (key_rect.right + 6, y + 3))
+    draw_text(surface, label, fonts.tiny, WHITE, (key_rect.right + scale_px(6, 6, 9), y + scale_px(3, 3, 5)))
     return measure_key_hint(fonts, key, label)
 
 
@@ -1317,6 +1438,7 @@ def draw_toast_message(
 
 def main() -> None:
     pygame.init()
+    configure_responsive_layout()
     pygame.display.set_caption("New Energy Logistics Fleet Dispatch")
     screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
     clock = pygame.time.Clock()
@@ -1352,10 +1474,34 @@ def main() -> None:
                     demo_world.set_strategy("energy_aware_hybrid")
                     toast_message = "Strategy switched to energy_aware_hybrid"
                     toast_until = pygame.time.get_ticks() / 1000.0 + 1.8
+                elif event.key == pygame.K_4:
+                    demo_world.set_strategy("genetic_algorithm")
+                    toast_message = "Strategy switched to genetic_algorithm"
+                    toast_until = pygame.time.get_ticks() / 1000.0 + 1.8
+                elif event.key == pygame.K_d:
+                    order = ["easy", "medium", "hard"]
+                    current_index = order.index(demo_world.difficulty)
+                    demo_world.set_difficulty(order[(current_index + 1) % len(order)])
+                    toast_message = f"Difficulty switched to {demo_world.difficulty}"
+                    toast_until = pygame.time.get_ticks() / 1000.0 + 1.8
+                elif event.key in (pygame.K_s, pygame.K_m, pygame.K_l, pygame.K_x):
+                    key_to_scale = {
+                        pygame.K_s: "small",
+                        pygame.K_m: "medium",
+                        pygame.K_l: "large",
+                        pygame.K_x: "extra_large",
+                    }
+                    demo_world.set_scale(key_to_scale[event.key])
+                    toast_message = f"Scale label switched to {demo_world.scale}"
+                    toast_until = pygame.time.get_ticks() / 1000.0 + 1.8
                 elif event.key == pygame.K_r:
                     current_strategy = demo_world.strategy
+                    current_difficulty = demo_world.difficulty
+                    current_scale = demo_world.scale
                     demo_world.reset()
                     demo_world.set_strategy(current_strategy)
+                    demo_world.set_difficulty(current_difficulty)
+                    demo_world.set_scale(current_scale)
 
         if not paused:
             demo_world.update(dt)

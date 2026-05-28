@@ -23,6 +23,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from simulator import Simulator
 from simulator.pathfinder_adapter import RealPathfinder
 from core.difficulty import get_difficulty_config
+from strategy import Dispatcher
 
 try:
     from state_adapter import load_state_from_simulator
@@ -34,16 +35,24 @@ except ImportError:
 
 FPS = 60
 SIM_MINUTES_PER_REAL_SECOND = 8.0
-LOW_BATTERY_DEMO = True
+LOW_BATTERY_DEMO = False
 LOW_BATTERY_VALUE = 15.0
 UI_DIFFICULTY = "easy"
 UI_SCALE = "small"
+UI_STRATEGY = "nearest"
 PRESENTATION_FLEET_BY_SCALE = True
+SUPPORTED_DIFFICULTIES = ("easy", "medium", "hard")
 SCALE_TO_MAP_FILE = {
     "small": "data/small_map.json",
     "medium": "data/medium_map.json",
     "large": "data/large_map.json",
     "extra_large": "data/extra_large_map.json",
+}
+SUPPORTED_STRATEGIES = {
+    "nearest",
+    "largest",
+    "energy_aware_hybrid",
+    "genetic_algorithm",
 }
 SCALE_COUNT_FIELD = {
     "small": "count_small",
@@ -84,6 +93,24 @@ def normalize_scale(scale: str) -> str:
         return scale
     print(f"[Simulator UI] Unknown scale '{scale}', fallback to small.")
     return "small"
+
+
+def normalize_difficulty(difficulty: str) -> str:
+    """Return a supported difficulty, falling back to easy if needed."""
+
+    difficulty = str(difficulty or "easy").lower()
+    if difficulty in SUPPORTED_DIFFICULTIES:
+        return difficulty
+    print(f"[Simulator UI] Unknown difficulty '{difficulty}', fallback to easy.")
+    return "easy"
+
+
+def next_difficulty(difficulty: str) -> str:
+    """Cycle easy -> medium -> hard -> easy for live demonstrations."""
+
+    difficulty = normalize_difficulty(difficulty)
+    current_index = SUPPORTED_DIFFICULTIES.index(difficulty)
+    return SUPPORTED_DIFFICULTIES[(current_index + 1) % len(SUPPORTED_DIFFICULTIES)]
 
 
 def choose_demo_task_nodes(pathfinder: RealPathfinder, count: int = 3) -> list[int]:
@@ -137,9 +164,23 @@ def apply_presentation_fleet_size(config, scale: str, difficulty: str) -> None:
 
     vehicle_count = get_presentation_vehicle_count(scale, difficulty)
     setattr(config.vehicle, count_field, vehicle_count)
+
+
+def get_actual_vehicle_count(simulator: Simulator) -> int:
+    """Read the fleet size that B's Simulator actually created."""
+
+    vehicles = getattr(simulator, "vehicles", None)
+    if vehicles is None:
+        return 0
+    return len(vehicles)
+
+
+def print_actual_fleet_size(simulator: Simulator, scale: str, difficulty: str) -> None:
+    """Print the true fleet size after Simulator initialization."""
+
     print(
-        f"[Simulator UI] Presentation fleet size: "
-        f"scale={scale}, difficulty={difficulty}, vehicles={vehicle_count}"
+        f"[Simulator UI] Actual fleet size: "
+        f"scale={scale}, difficulty={difficulty}, vehicles={get_actual_vehicle_count(simulator)}"
     )
 
 
@@ -169,16 +210,26 @@ def create_simulator(strategy: str = "nearest", difficulty: str = "easy", scale:
     """Create a Simulator with RealPathfinder and optional difficulty config."""
     random.seed(2026)
     scale = normalize_scale(scale)
+    difficulty = normalize_difficulty(difficulty)
+    strategy = normalize_strategy(strategy)
     map_file = SCALE_TO_MAP_FILE[scale]
     pathfinder = RealPathfinder(map_file)
     config = get_difficulty_config(scale, difficulty)
     apply_presentation_fleet_size(config, scale, difficulty)
+    graph_data = build_b_graph_from_pathfinder(pathfinder)
     simulator = Simulator(
-        graph_data=build_b_graph_from_pathfinder(pathfinder),
+        graph_data=graph_data,
         scale=scale,
         strategy=strategy,
-        pathfinder=pathfinder,
         config=config,
+    )
+    # Keep B's converted graph/state, but use A's RealPathfinder for routing.
+    simulator.pathfinder = pathfinder
+    simulator._dispatcher = Dispatcher(
+        pathfinder,
+        strategy,
+        consume_rate=simulator.energy_per_km,
+        load_capacity=simulator.load_capacity,
     )
 
     add_ui_demo_tasks(simulator, pathfinder)
@@ -186,6 +237,7 @@ def create_simulator(strategy: str = "nearest", difficulty: str = "easy", scale:
     if LOW_BATTERY_DEMO:
         enable_low_battery_demo(simulator)
 
+    print_actual_fleet_size(simulator, scale, difficulty)
     return simulator
 
 
@@ -237,6 +289,8 @@ def advance_simulator(simulator: Simulator, dt_minutes: float) -> bool:
 
 def reset_simulator(strategy: str, difficulty: str = "easy", scale: str = "small") -> Simulator:
     scale = normalize_scale(scale)
+    difficulty = normalize_difficulty(difficulty)
+    strategy = normalize_strategy(strategy)
     print(
         f"[Simulator UI] Reset simulator with strategy: {strategy}, "
         f"difficulty: {difficulty}, scale: {scale}"
@@ -244,11 +298,23 @@ def reset_simulator(strategy: str, difficulty: str = "easy", scale: str = "small
     return create_simulator(strategy=strategy, difficulty=difficulty, scale=scale)
 
 
-def parse_cli_args(argv: list[str]) -> tuple[str, str]:
-    """Parse --scale and --difficulty without adding dependencies."""
+def normalize_strategy(strategy: str) -> str:
+    """Return a supported strategy, falling back to nearest if needed."""
+
+    strategy = str(strategy or "nearest")
+    if strategy in SUPPORTED_STRATEGIES:
+        return strategy
+    print(f"[Simulator UI] Unknown strategy '{strategy}', fallback to nearest.")
+    return "nearest"
+
+
+def parse_cli_args(argv: list[str]) -> tuple[str, str, str, bool]:
+    """Parse simple command-line options without adding dependencies."""
 
     scale = UI_SCALE
     difficulty = UI_DIFFICULTY
+    strategy = UI_STRATEGY
+    low_battery_demo = LOW_BATTERY_DEMO
     index = 1
     while index < len(argv):
         arg = argv[index]
@@ -256,16 +322,23 @@ def parse_cli_args(argv: list[str]) -> tuple[str, str]:
             scale = normalize_scale(argv[index + 1])
             index += 2
         elif arg == "--difficulty" and index + 1 < len(argv):
-            difficulty = argv[index + 1]
+            difficulty = normalize_difficulty(argv[index + 1])
             index += 2
+        elif arg == "--strategy" and index + 1 < len(argv):
+            strategy = normalize_strategy(argv[index + 1])
+            index += 2
+        elif arg == "--demo-low-battery":
+            low_battery_demo = True
+            index += 1
         else:
             print(f"[Simulator UI] Ignored argument: {arg}")
             index += 1
-    return scale, difficulty
+    return scale, difficulty, strategy, low_battery_demo
 
 
 def main() -> None:
     pygame.init()
+    pygame_app.configure_responsive_layout()
     pygame.display.set_caption("Simulator Connected Fleet Dispatch UI")
     screen = pygame.display.set_mode((pygame_app.WINDOW_WIDTH, pygame_app.WINDOW_HEIGHT))
     clock = pygame.time.Clock()
@@ -273,7 +346,7 @@ def main() -> None:
 
     current_scale = UI_SCALE
     current_difficulty = UI_DIFFICULTY
-    strategy = "nearest"
+    strategy = UI_STRATEGY
     simulator = create_simulator(strategy=strategy, difficulty=current_difficulty, scale=current_scale)
     paused = False
     running = True
@@ -328,6 +401,11 @@ def main() -> None:
                         simulator = reset_simulator(strategy, current_difficulty, current_scale)
                         toast_message = "GA strategy is not available"
                     toast_until = pygame.time.get_ticks() / 1000.0 + 1.8
+                elif event.key == pygame.K_d:
+                    current_difficulty = next_difficulty(current_difficulty)
+                    simulator = reset_simulator(strategy, current_difficulty, current_scale)
+                    toast_message = f"Reset with difficulty: {current_difficulty}"
+                    toast_until = pygame.time.get_ticks() / 1000.0 + 1.8
                 elif event.key in (pygame.K_s, pygame.K_m, pygame.K_l, pygame.K_x):
                     key_to_scale = {
                         pygame.K_s: "small",
@@ -348,6 +426,9 @@ def main() -> None:
                 warned_no_update = True
 
         state = load_state_from_simulator(simulator)
+        state.setdefault("metrics", {})
+        state["metrics"]["difficulty"] = current_difficulty
+        state["metrics"]["vehicle_count"] = get_actual_vehicle_count(simulator)
 
         screen.fill(pygame_app.BACKGROUND)
         pygame_app.draw_map(screen, state, fonts, frame_count, paused)
@@ -359,5 +440,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    UI_SCALE, UI_DIFFICULTY = parse_cli_args(sys.argv)
+    UI_SCALE, UI_DIFFICULTY, UI_STRATEGY, LOW_BATTERY_DEMO = parse_cli_args(sys.argv)
     main()

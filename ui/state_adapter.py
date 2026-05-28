@@ -108,17 +108,23 @@ def attach_vehicle_positions(vehicles: Any, nodes: Dict[Any, Dict[str, Any]]) ->
             raise TypeError(f"vehicle #{index} must be a dictionary")
 
         current_node = _first_present(vehicle, "current_node", "current_node_id")
-        normalized_vehicle = {
-            "id": vehicle.get("id", f"vehicle_{index + 1}"),
-            "x": vehicle.get("x"),
-            "y": vehicle.get("y"),
-            "current_node": current_node,
-            "battery": vehicle.get("battery", 0),
-            "load": vehicle.get("load", 0),
-            "status": vehicle.get("status", "idle"),
-            "target_node": vehicle.get("target_node", vehicle.get("target_node_id", "")),
-            "path": list(vehicle.get("path") or []),
-        }
+
+        # Start from the original simulator vehicle so UI-only adapter logic does
+        # not drop useful fields such as max_battery, max_load, charging_target,
+        # or current_task_id.
+        normalized_vehicle = dict(vehicle)
+        normalized_vehicle["id"] = vehicle.get("id", f"vehicle_{index + 1}")
+        normalized_vehicle["x"] = vehicle.get("x")
+        normalized_vehicle["y"] = vehicle.get("y")
+        normalized_vehicle["current_node"] = current_node
+        normalized_vehicle["battery"] = vehicle.get("battery", 0)
+        normalized_vehicle["load"] = vehicle.get("load", 0)
+        normalized_vehicle["status"] = vehicle.get("status", "idle")
+        normalized_vehicle["target_node"] = vehicle.get(
+            "target_node",
+            vehicle.get("target_node_id", ""),
+        )
+        normalized_vehicle["path"] = list(vehicle.get("path") or [])
 
         node = _find_node(nodes, current_node)
         if (normalized_vehicle["x"] is None or normalized_vehicle["y"] is None) and node:
