@@ -1,0 +1,5 @@
+strategy,total_score,completed_tasks,timeout_tasks,total_distance,charging_times,charging_requests,charging_queue_events,max_queue_length,total_charging_wait_time,strategy_label
+nearest,90.45,5.667,12.167,408.725,16,23,7,4,211.0,Nearest
+largest,-1383.208,1.583,16.0,377.508,13,20,5,2,93.0,Largest
+energy_aware_hybrid,-236.817,4.167,13.0,385.65,14,18,6,4,247.0,Hybrid
+genetic_algorithm,-156.017,4.5,12.75,437.3,17,24,6,3,98.0,GA

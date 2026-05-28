@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <title>新能源物流车队调度实验分析</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 32px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+            background: #f5f7fb;
+            color: #1f2937;
+        }
+        .page {
+            max-width: 1180px;
+            margin: 0 auto;
+        }
+        h1 {
+            margin-bottom: 8px;
+            font-size: 30px;
+        }
+        .meta {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 10px 24px;
+            padding: 18px 20px;
+            background: white;
+            border: 1px solid #d8e0ea;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+        .summary-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            margin: 12px 0 28px;
+            font-size: 14px;
+        }
+        .summary-table th, .summary-table td {
+            border: 1px solid #d8e0ea;
+            padding: 8px 10px;
+            text-align: right;
+        }
+        .summary-table th:first-child, .summary-table td:first-child,
+        .summary-table th:last-child, .summary-table td:last-child {
+            text-align: left;
+        }
+        .figure-card {
+            background: white;
+            border: 1px solid #d8e0ea;
+            border-radius: 10px;
+            margin: 24px 0;
+            padding: 18px;
+        }
+        .figure-card h2 {
+            margin: 0 0 12px;
+            font-size: 20px;
+        }
+        img {
+            max-width: 100%;
+            display: block;
+            margin: 0 auto;
+        }
+        code {
+            background: #eef2f7;
+            padding: 2px 5px;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+<main class="page">
+    <h1>新能源物流车队协同调度实验分析</h1>
+    <p>本页面由 <code>visualization/advanced_analysis.py</code> 自动生成，用于报告和答辩展示。</p>
+    <div class="meta">
+        <div><strong>数据源：</strong>results/experiment_results.csv</div>
+        <div><strong>生成时间：</strong>2026-05-28 17:50:34</div>
+        <div><strong>实验行数：</strong>48</div>
+        <div><strong>策略：</strong>Nearest, Largest, Hybrid, GA</div>
+        <div><strong>难度：</strong>easy, medium, hard</div>
+        <div><strong>规模：</strong>small, medium, large, extra_large</div>
+    </div>
+    <h2>策略 KPI 汇总表</h2>
+    <table border="1" class="dataframe summary-table">
+  <thead>
+    <tr style="text-align: right;">
+      <th>strategy</th>
+      <th>total_score</th>
+      <th>completed_tasks</th>
+      <th>timeout_tasks</th>
+      <th>total_distance</th>
+      <th>charging_times</th>
+      <th>charging_requests</th>
+      <th>charging_queue_events</th>
+      <th>max_queue_length</th>
+      <th>total_charging_wait_time</th>
+      <th>strategy_label</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>nearest</td>
+      <td>90.45</td>
+      <td>5.67</td>
+      <td>12.17</td>
+      <td>408.72</td>
+      <td>16</td>
+      <td>23</td>
+      <td>7</td>
+      <td>4</td>
+      <td>211.0</td>
+      <td>Nearest</td>
+    </tr>
+    <tr>
+      <td>largest</td>
+      <td>-1383.21</td>
+      <td>1.58</td>
+      <td>16.00</td>
+      <td>377.51</td>
+      <td>13</td>
+      <td>20</td>
+      <td>5</td>
+      <td>2</td>
+      <td>93.0</td>
+      <td>Largest</td>
+    </tr>
+    <tr>
+      <td>energy_aware_hybrid</td>
+      <td>-236.82</td>
+      <td>4.17</td>
+      <td>13.00</td>
+      <td>385.65</td>
+      <td>14</td>
+      <td>18</td>
+      <td>6</td>
+      <td>4</td>
+      <td>247.0</td>
+      <td>Hybrid</td>
+    </tr>
+    <tr>
+      <td>genetic_algorithm</td>
+      <td>-156.02</td>
+      <td>4.50</td>
+      <td>12.75</td>
+      <td>437.30</td>
+      <td>17</td>
+      <td>24</td>
+      <td>6</td>
+      <td>3</td>
+      <td>98.0</td>
+      <td>GA</td>
+    </tr>
+  </tbody>
+</table>
+    
+            <section class="figure-card">
+                <h2>KPI summary by strategy</h2>
+                <img src="strategy_kpi_summary.png" alt="KPI summary by strategy">
+                <p>每个策略的核心 KPI 汇总：收益、完成数、超时数和里程使用平均值；充电请求、充电次数、排队事件和等待时间使用合计值；最大队列长度使用该策略所有实验中的最大值。</p>
+            </section>
+            
+            <section class="figure-card">
+                <h2>Ranking heatmap</h2>
+                <img src="ranking_heatmap.png" alt="Ranking heatmap">
+                <p>按策略聚合后的指标排名，1 表示最好。收益和完成数越大越好；超时、里程和排队事件越小越好。</p>
+            </section>
+            
+            <section class="figure-card">
+                <h2>Score-distance trade-off</h2>
+                <img src="score_distance_tradeoff.png" alt="Score-distance trade-off">
+                <p>每个点代表一组实验；横轴为总里程，纵轴为总得分，颜色表示策略，点形状表示难度，点大小表示完成任务数。</p>
+            </section>
+            
+            <section class="figure-card">
+                <h2>Difficulty trend</h2>
+                <img src="difficulty_trend.png" alt="Difficulty trend">
+                <p>按 easy -> medium -> hard 顺序展示各策略平均总得分随难度变化的趋势。</p>
+            </section>
+            
+            <section class="figure-card">
+                <h2>Difficulty completion trend</h2>
+                <img src="difficulty_completion_trend.png" alt="Difficulty completion trend">
+                <p>按 easy -> medium -> hard 顺序展示各策略平均完成任务数随难度变化的趋势。</p>
+            </section>
+            
+            <section class="figure-card">
+                <h2>Scale trend</h2>
+                <img src="scale_trend.png" alt="Scale trend">
+                <p>按 small -> medium -> large -> extra_large 顺序展示各策略平均总得分随规模变化的趋势。</p>
+            </section>
+            
+            <section class="figure-card">
+                <h2>Charging pressure dashboard</h2>
+                <img src="charging_pressure_dashboard.png" alt="Charging pressure dashboard">
+                <p>充电压力指标按策略合计：Requests 来自 charging_requests，Charging 来自 charging_times，Queue events 来自 charging_queue_events，Wait time 来自 total_charging_wait_time。</p>
+            </section>
+            
+            <section class="figure-card">
+                <h2>Normalized radar chart</h2>
+                <img src="strategy_radar.png" alt="Normalized radar chart">
+                <p>所有指标归一化到 0-1，数值越大代表表现越好；Low Timeout、Low Distance 和 Low Charging Pressure 已做反向归一化。</p>
+            </section>
+            
+            <section class="figure-card">
+                <h2>Pareto frontier</h2>
+                <img src="pareto_frontier.png" alt="Pareto frontier">
+                <p>Pareto 前沿表示没有被其他实验同时以更高得分和更低里程支配的结果点。</p>
+            </section>
+            
+</main>
+</body>
+</html>

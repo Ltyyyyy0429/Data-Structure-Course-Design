@@ -45,18 +45,19 @@ python3 ui/simulator_app.py --scale large --difficulty hard --strategy energy_aw
 运行批量实验：
 
 ```bash
-python3 batch_experiment.py all       # 3 难度 x 4 规模 x 4 策略 = 48 组实验
+python3 batch_experiment.py all --quiet  # 3 难度 x 4 规模 x 4 策略 = 48 组实验
 python3 batch_experiment.py medium    # 仅 MEDIUM 难度，16 组
 python3 batch_experiment.py hard      # 仅 HARD 难度，16 组
 ```
 
-生成实验图表：
+生成高级实验分析仪表盘：
 
 ```bash
-python3 visualization/plot_results.py
+python3 batch_experiment.py all --quiet
+python3 visualization/advanced_analysis.py
 ```
 
-`plot_results.py` 不再自动生成示例数据。请先运行 `python3 batch_experiment.py all`，生成正式的 `results/experiment_results.csv` 后再画图。CSV 中策略原值保持 `nearest`、`largest`、`energy_aware_hybrid`、`genetic_algorithm`；图表图例使用短标签 `nearest`、`largest`、`hybrid`、`GA`。
+高级分析输出到 `results/analysis/`，其中 `index.html` 可以直接用浏览器打开，包含 KPI 汇总表、策略排名热力图、收益-里程权衡、难度/规模趋势、充电压力、雷达图和 Pareto 前沿。`advanced_analysis.py` 会自动读取最新的 `results/experiment_results.csv`，因此同学修改核心代码后，只需要重新运行完整批量实验，再运行高级分析脚本，不需要修改 UI 或图表代码。
 
 运行测试：
 
@@ -213,20 +214,36 @@ UI 车辆数不做额外演示覆盖，直接读取 Simulator 实际创建的车
 
 其中 `--demo-low-battery` 只用于可视化演示，方便观察低电量与充电行为；正式实验数据不以 UI 演示为准。
 
-### Matplotlib 图表
+### 高级实验分析图表（推荐用于报告）
 
 ```bash
-python3 visualization/plot_results.py   # 读取 results/experiment_results.csv 生成 PNG
+python3 batch_experiment.py all --quiet
+python3 visualization/advanced_analysis.py
 ```
 
-图表输出到 `results/figures/`，覆盖总收益、完成任务数、超时任务数、总路径长度、充电次数、充电需求、排队次数、最大队列长度、总等待时间。图表脚本只读取正式 CSV，不会自动生成示例数据；如果 CSV 缺失、列缺失或不是 48 行，会提示先运行完整批量实验。每次生成前会清理旧 PNG，避免报告误用旧图。
+高级分析脚本读取 `results/experiment_results.csv`，输出到 `results/analysis/`：
+
+- `summary_table.csv`：按策略聚合的 KPI 汇总表（收益、完成数、超时数、里程使用平均值；充电请求、充电次数、排队事件、等待时间使用合计值；最大队列长度使用最大值）
+- `strategy_kpi_summary.png`：策略总览图
+- `ranking_heatmap.png`：核心指标排名热力图
+- `score_distance_tradeoff.png`：收益与总里程权衡图
+- `difficulty_trend.png` / `difficulty_completion_trend.png`：难度趋势图
+- `scale_trend.png`：规模趋势图
+- `charging_pressure_dashboard.png`：充电与排队压力仪表盘
+- `strategy_radar.png`：多指标归一化雷达图
+- `pareto_frontier.png`：收益-里程 Pareto 前沿图
+- `index.html`：可直接打开的 HTML 总览页
+
+该脚本不会生成假数据；如果 CSV 不存在、行数不足或缺少必要字段，会提示先运行 `python3 batch_experiment.py all --quiet`。如果后续 A/B/C 修改核心逻辑，只需要重新生成 CSV，再运行 `advanced_analysis.py`，即可得到新的分析图表，不需要修改 Pygame UI。
+
+`visualization/plot_results.py` 仍保留为基础柱状图备用脚本，但最终报告和展示统一使用 `results/analysis/` 下的高级分析图表。旧的 `results/figures/*.png` 不再作为最终提交图表，避免和高级分析口径混用。
 
 ### 批量实验
 
 正式批量实验命令：
 
 ```bash
-python3 batch_experiment.py all
+python3 batch_experiment.py all --quiet
 ```
 
 实验维度：4 scales × 3 difficulties × 4 strategies = 48 runs，默认仿真 180 分钟。
