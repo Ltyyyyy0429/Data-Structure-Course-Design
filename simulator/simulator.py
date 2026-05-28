@@ -78,7 +78,17 @@ class Simulator:
             self.speed_kmh = self.VEHICLE_SPEED
             self.battery_capacity = self.VEHICLE_BATTERY_CAPACITY
             self.load_capacity = self.VEHICLE_LOAD_CAPACITY
-            self.vehicle_count = 3
+            # 无 config 时按规模设置车辆数
+            if scale == "small":
+                self.vehicle_count = 5
+            elif scale == "medium":
+                self.vehicle_count = 10
+            elif scale == "large":
+                self.vehicle_count = 15
+            elif scale == "extra_large":
+                self.vehicle_count = 20
+            else:
+                self.vehicle_count = 3
             self.energy_per_km = self.ENERGY_PER_KM
             self.charging_rate = self.CHARGING_RATE
             self.ports_per_station = self.CHARGING_PORTS_PER_STATION
@@ -92,14 +102,6 @@ class Simulator:
             self.task_weight_min = 50.0
             self.task_weight_max = 500.0
             self._task_config = None
-
-         # ========== 根据规模调整车辆数 ==========
-        if scale == "small":
-            self.vehicle_count = 5
-        elif scale == "medium":
-            self.vehicle_count = 10
-        elif scale == "large":
-            self.vehicle_count = 15
 
         # ========== 初始化 pathfinder 和 nodes/edges ==========
         if pathfinder is not None:
