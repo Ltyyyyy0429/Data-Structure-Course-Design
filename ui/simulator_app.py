@@ -1,7 +1,8 @@
 """Pygame UI connected to B Simulator.
 
 Run from the project root:
-    python3 ui/simulator_app.py
+    python3 ui/simulator_app.py --scale large --difficulty hard --strategy energy_aware_hybrid
+    python3 ui/simulator_app.py --scale large --difficulty hard --strategy energy_aware_hybrid --demo-low-battery
 
 This keeps the original demo UI untouched:
     python3 ui/pygame_app.py
@@ -40,7 +41,7 @@ LOW_BATTERY_VALUE = 15.0
 UI_DIFFICULTY = "easy"
 UI_SCALE = "small"
 UI_STRATEGY = "nearest"
-PRESENTATION_FLEET_BY_SCALE = True
+PRESENTATION_FLEET_BY_SCALE = False
 SUPPORTED_DIFFICULTIES = ("easy", "medium", "hard")
 SCALE_TO_MAP_FILE = {
     "small": "data/small_map.json",
@@ -153,7 +154,11 @@ def get_presentation_vehicle_count(scale: str, difficulty: str) -> int:
 
 
 def apply_presentation_fleet_size(config, scale: str, difficulty: str) -> None:
-    """Adjust only this UI-created config object; ABC source code is unchanged."""
+    """Optional UI-only fleet override.
+
+    It is disabled by default so the display follows the vehicle count that
+    B's Simulator actually creates from the current core configuration.
+    """
 
     if not PRESENTATION_FLEET_BY_SCALE:
         return

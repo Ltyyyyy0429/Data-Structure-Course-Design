@@ -1,88 +1,249 @@
-import json
+"""Assert-based tests for the four dispatch strategies.
+
+Run with:
+    python3 test_strategy.py
+"""
+
+from __future__ import annotations
+
+import random
+
 from strategy import Dispatcher
 
-# ==========================================
-# 1. 伪造 RealPathfinder (Mock Pathfinder)
-# ==========================================
-class MockRealPathfinder:
-    def find_path_and_distance(self, start_node, end_node):
-        # 节点 0: 小车位置 | 1: 近任务 | 2: 远任务 | 3: 近充电站 | 4: 远充电站
-        routes = {
-            (0, 1): ([0, 1], 10),    # 小车到近任务：距离 10
-            (0, 2): ([0, 2], 100),   # 小车到远任务：距离 100
-            (1, 3): ([1, 3], 5),     # 近任务到近充电站：距离 5
-            (2, 4): ([2, 4], 5),     # 远任务到远充电站：距离 5
-        }
-        result = routes.get((start_node, end_node)) or routes.get((end_node, start_node))
-        if result is not None:
-            return result
-        return ([start_node, end_node], 999) 
 
-# ==========================================
-# 2. 伪造 B 同学的状态数据字典 (Mock State)
-# ==========================================
-def create_mock_state(battery_level, far_charger_queue=0):
+class MockPathfinder:
+    """Small deterministic pathfinder used by strategy tests."""
+
+    def __init__(self, distances: dict[tuple[int, int], float]):
+        self.distances = distances
+
+    def find_path_and_distance(self, start_node, end_node):
+        start_node = int(start_node)
+        end_node = int(end_node)
+        if start_node == end_node:
+            return [start_node], 0.0
+
+        distance = self.distances.get((start_node, end_node))
+        if distance is None:
+            distance = self.distances.get((end_node, start_node))
+        if distance is None:
+            return [], float("inf")
+        return [start_node, end_node], float(distance)
+
+
+def make_base_state() -> dict:
     return {
-        'current_time': 100,
-        'vehicles': [
-            {'id': 'v1', 'status': 'idle', 'current_node': 0, 'battery': battery_level, 'max_battery': 100}
+        "current_time": 0.0,
+        "metrics": {"current_time": 0.0, "scale": "small", "strategy": "test"},
+        "vehicles": [
+            {
+                "id": "v1",
+                "status": "idle",
+                "current_node": 0,
+                "battery": 120.0,
+                "max_battery": 120.0,
+                "load": 0.0,
+                "max_load": 1000.0,
+            }
         ],
-        'tasks': [
-            {'id': 'task_near_light', 'status': 'waiting', 'node_id': 1, 'weight': 10, 'deadline': 1000},
-            {'id': 'task_far_heavy', 'status': 'waiting', 'node_id': 2, 'weight': 100, 'deadline': 1000}
-        ],
-        'charging_stations': [
-            {'node_id': 3, 'queue_length': 0},                 # 靠近 task_near_light 的充电站
-            {'node_id': 4, 'queue_length': far_charger_queue}  # 靠近 task_far_heavy 的充电站
-        ]
+        "tasks": [],
+        "charging_stations": [{"node_id": 9, "queue_length": 0}],
     }
 
-# ==========================================
-# 3. 运行测试用例
-# ==========================================
-def run_tests():
-    mock_pathfinder = MockRealPathfinder()
-    # 实例化带有假地图的调度器，启用新策略
-    dispatcher = Dispatcher(pathfinder=mock_pathfinder, strategy_name="energy_aware_hybrid")
-    
-    print("=== 开始测试能量感知调度算法 ===\n")
-    
-    # ----------------------------------------------------
-    # 测试用例 1：满电状态 (100%) - 测试“贪心收益”
-    # ----------------------------------------------------
-    print("【测试用例 1：小车满电 (100%)，充电站空闲】")
-    state_100 = create_mock_state(battery_level=100)
-    result_100 = dispatcher.dispatch(state_100)
-    print(f"预期行为: 无视距离惩罚，被巨大收益吸引，去接 'task_far_heavy'")
-    print(f"实际输出: {json.dumps(result_100, indent=2, ensure_ascii=False)}\n")
-    
-    # ----------------------------------------------------
-    # 测试用例 2：低电量危机 (15%) - 测试“硬门槛拦截”
-    # ----------------------------------------------------
-    print("【测试用例 2：小车低电量 (15%)】")
-    state_15 = create_mock_state(battery_level=15)
-    result_15 = dispatcher.dispatch(state_15)
-    print(f"预期行为: 触发安全电量拦截，放弃远任务，保底选择 'task_near_light'")
-    print(f"实际输出: {json.dumps(result_15, indent=2, ensure_ascii=False)}\n")
 
-    # ----------------------------------------------------
-    # 测试用例 3：极度缺电 (5%) - 测试“全面拒绝”
-    # ----------------------------------------------------
-    print("【测试用例 3：小车极度缺电 (5%)】")
-    state_5 = create_mock_state(battery_level=5)
-    result_5 = dispatcher.dispatch(state_5)
-    print(f"预期行为: 所有任务都不满足安全底线，拒绝接单，返回空指令 []")
-    print(f"实际输出: {json.dumps(result_5, indent=2, ensure_ascii=False)}\n")
+def task(task_id: str, node_id: int, weight: float, status: str = "waiting", deadline: float = 999.0) -> dict:
+    return {
+        "id": task_id,
+        "node_id": node_id,
+        "weight": weight,
+        "status": status,
+        "deadline": deadline,
+    }
 
-    # ----------------------------------------------------
-    # 测试用例 4：充电站大排长龙 - 测试“排队惩罚” (新增)
-    # ----------------------------------------------------
-    print("【测试用例 4：小车满电，但高收益任务附近的充电站大排长龙】")
-    # 传入参数：满电 100%，远任务的充电站排队人数设置为 20 辆车
-    state_queue = create_mock_state(battery_level=100, far_charger_queue=20)
-    result_queue = dispatcher.dispatch(state_queue)
-    print(f"预期行为: 目标充电站排队 20 辆车 (惩罚分: 20*10 = -200分)，综合得分被拉低，车辆果断放弃高收益，改选 'task_near_light'")
-    print(f"实际输出: {json.dumps(result_queue, indent=2, ensure_ascii=False)}\n")
+
+def assert_actions_valid(actions: list[dict], state: dict) -> None:
+    """Check common action invariants shared by all strategies."""
+
+    assert isinstance(actions, list), "actions must be a list"
+
+    vehicles = {vehicle["id"]: vehicle for vehicle in state.get("vehicles", [])}
+    tasks = {task_data["id"]: task_data for task_data in state.get("tasks", [])}
+    assigned_task_ids = set()
+
+    for action in actions:
+        assert action.get("action") == "assign", f"unexpected action: {action}"
+
+        vehicle_id = action.get("vehicle_id")
+        task_id = action.get("task_id")
+        assert vehicle_id in vehicles, f"unknown vehicle_id: {vehicle_id}"
+        assert task_id in tasks, f"unknown task_id: {task_id}"
+        assert task_id not in assigned_task_ids, f"task assigned twice: {task_id}"
+        assigned_task_ids.add(task_id)
+
+        selected_vehicle = vehicles[vehicle_id]
+        selected_task = tasks[task_id]
+        assert selected_task.get("status") == "waiting", f"task is not waiting: {task_id}"
+        assert "target_node" in action, f"action missing target_node: {action}"
+        assert action["target_node"] == selected_task["node_id"], (
+            f"target_node does not match task node for {task_id}"
+        )
+
+        current_load = float(selected_vehicle.get("load", 0) or 0)
+        task_weight = float(selected_task.get("weight", 0) or 0)
+        capacity = float(
+            selected_vehicle.get(
+                "max_load",
+                selected_vehicle.get("load_capacity", selected_vehicle.get("capacity", 1000.0)),
+            )
+            or 1000.0
+        )
+        assert current_load + task_weight <= capacity, f"overloaded assignment: {action}"
+
+
+def dispatch(strategy_name: str, state: dict, pathfinder: MockPathfinder, **kwargs) -> list[dict]:
+    dispatcher = Dispatcher(pathfinder=pathfinder, strategy_name=strategy_name, **kwargs)
+    return dispatcher.dispatch(state)
+
+
+def test_nearest_skips_overload_and_selects_nearest_feasible() -> None:
+    state = make_base_state()
+    state["vehicles"][0]["load"] = 850.0
+    state["tasks"] = [
+        task("near_overload", 1, 200.0),
+        task("middle_feasible", 2, 100.0),
+        task("far_feasible", 3, 100.0),
+    ]
+    pathfinder = MockPathfinder({(0, 1): 5, (0, 2): 10, (0, 3): 30})
+
+    actions = dispatch("nearest", state, pathfinder)
+
+    assert_actions_valid(actions, state)
+    assert len(actions) == 1
+    assert actions[0]["task_id"] == "middle_feasible"
+
+
+def test_largest_skips_overload_and_selects_largest_feasible() -> None:
+    state = make_base_state()
+    state["vehicles"][0]["load"] = 700.0
+    state["tasks"] = [
+        task("too_heavy", 1, 400.0),
+        task("largest_feasible", 2, 250.0),
+        task("light_feasible", 3, 80.0),
+    ]
+    pathfinder = MockPathfinder({(0, 1): 5, (0, 2): 20, (0, 3): 10})
+
+    actions = dispatch("largest", state, pathfinder)
+
+    assert_actions_valid(actions, state)
+    assert len(actions) == 1
+    assert actions[0]["task_id"] == "largest_feasible"
+
+
+def test_energy_aware_hybrid_uses_energy_and_load_constraints() -> None:
+    high_state = make_base_state()
+    high_state["tasks"] = [
+        task("overload", 1, 1200.0),
+        task("safe_near", 2, 100.0),
+        task("safe_far", 3, 200.0),
+    ]
+    high_state["charging_stations"] = [{"node_id": 9, "queue_length": 0}]
+    pathfinder = MockPathfinder({
+        (0, 1): 5,
+        (0, 2): 10,
+        (0, 3): 50,
+        (1, 9): 5,
+        (2, 9): 5,
+        (3, 9): 5,
+    })
+
+    high_actions = dispatch(
+        "energy_aware_hybrid",
+        high_state,
+        pathfinder,
+        consume_rate=1.0,
+        load_capacity=1000.0,
+    )
+    assert_actions_valid(high_actions, high_state)
+    assert high_actions, "high-battery hybrid scenario should assign a feasible task"
+    assert all(action["task_id"] != "overload" for action in high_actions)
+
+    low_state = make_base_state()
+    low_state["vehicles"][0]["battery"] = 5.0
+    low_state["tasks"] = [task("energy_unsafe", 2, 100.0)]
+    low_state["charging_stations"] = [{"node_id": 9, "queue_length": 0}]
+
+    low_actions = dispatch(
+        "energy_aware_hybrid",
+        low_state,
+        pathfinder,
+        consume_rate=1.0,
+        load_capacity=1000.0,
+    )
+    assert low_actions == [], "low battery should block unsafe assignment"
+
+
+def test_genetic_algorithm_returns_valid_constrained_actions() -> None:
+    random.seed(2026)
+    state = make_base_state()
+    state["vehicles"] = [
+        {
+            "id": "v1",
+            "status": "idle",
+            "current_node": 0,
+            "battery": 120.0,
+            "max_battery": 120.0,
+            "load": 0.0,
+            "max_load": 500.0,
+        },
+        {
+            "id": "v2",
+            "status": "idle",
+            "current_node": 0,
+            "battery": 120.0,
+            "max_battery": 120.0,
+            "load": 350.0,
+            "max_load": 500.0,
+        },
+    ]
+    state["tasks"] = [
+        task("waiting_a", 1, 200.0),
+        task("waiting_b", 2, 120.0),
+        task("not_waiting", 3, 100.0, status="assigned"),
+        task("overload_for_all", 4, 900.0),
+    ]
+    state["charging_stations"] = [{"node_id": 9, "queue_length": 1}]
+    pathfinder = MockPathfinder({
+        (0, 1): 10,
+        (0, 2): 12,
+        (0, 3): 8,
+        (0, 4): 6,
+        (1, 9): 5,
+        (2, 9): 5,
+        (3, 9): 5,
+        (4, 9): 5,
+    })
+
+    actions = dispatch(
+        "genetic_algorithm",
+        state,
+        pathfinder,
+        consume_rate=0.2,
+        load_capacity=500.0,
+    )
+
+    assert_actions_valid(actions, state)
+    assert actions, "GA should find at least one feasible assignment"
+    assert all(action["task_id"] != "not_waiting" for action in actions)
+    assert all(action["task_id"] != "overload_for_all" for action in actions)
+
+
+def run_tests() -> None:
+    test_nearest_skips_overload_and_selects_nearest_feasible()
+    test_largest_skips_overload_and_selects_largest_feasible()
+    test_energy_aware_hybrid_uses_energy_and_load_constraints()
+    test_genetic_algorithm_returns_valid_constrained_actions()
+    print("Strategy tests passed.")
+
 
 if __name__ == "__main__":
     run_tests()

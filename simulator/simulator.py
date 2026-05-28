@@ -601,11 +601,11 @@ class Simulator:
             score = max(score, 0)
             self.metrics.total_score += score
             self.metrics.completed_tasks += 1
-            
-            vehicle.load += task.weight
+
             if vehicle.load > self.load_capacity:
                 self.metrics.total_score -= 50
-                print(f"[Simulator] 警告: {vehicle.id} 超载！扣50分")
+                print(f"[Simulator] 警告: 调度阶段未拦截 {vehicle.id} 超载任务，已扣50分")
+            vehicle.load = max(0.0, vehicle.load - task.weight)
             if self.vehicle_active_task.get(vehicle.id) == task.id:
                 self.vehicle_active_task[vehicle.id] = None
             if self.saved_tasks.get(vehicle.id) == task.id:
@@ -619,10 +619,18 @@ class Simulator:
                 self.metrics.total_score -= 100
                 self.metrics.timeout_tasks += 1
                 self.task_travel_distance.pop(task.id, None)
+                unloaded_vehicle_ids = set()
                 for vehicle_id, active_task_id in list(self.vehicle_active_task.items()):
+                    vehicle = self.vehicles.get(vehicle_id)
                     if active_task_id == task.id:
+                        if vehicle and vehicle_id not in unloaded_vehicle_ids:
+                            vehicle.load = max(0.0, vehicle.load - task.weight)
+                            unloaded_vehicle_ids.add(vehicle_id)
                         self.vehicle_active_task[vehicle_id] = None
                     if self.saved_tasks.get(vehicle_id) == task.id:
+                        if vehicle and vehicle_id not in unloaded_vehicle_ids:
+                            vehicle.load = max(0.0, vehicle.load - task.weight)
+                            unloaded_vehicle_ids.add(vehicle_id)
                         self.saved_tasks[vehicle_id] = None
                 print(f"[Simulator] 任务 {task.id} 超时！扣100分")
     
@@ -688,6 +696,7 @@ class Simulator:
                 continue
 
             task.status = TaskStatus.ASSIGNED
+            vehicle.load += task.weight
             vehicle.target_node = task.node_id
             vehicle.status = VehicleStatus.MOVING
             self.vehicle_active_task[vehicle.id] = task.id

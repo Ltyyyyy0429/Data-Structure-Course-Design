@@ -118,6 +118,7 @@ LAYOUT_SCALE = 1.0
 WORLD_WIDTH = 100
 WORLD_HEIGHT = 100
 FPS = 60
+VEHICLE_LIST_MAX_ROWS = 5
 DEFAULT_MAX_BATTERY_KWH = {
     "easy": 120.0,
     "medium": 100.0,
@@ -215,6 +216,7 @@ TEXT = {
         "max_queue": "最大队列",
         "wait_time": "等待总时长",
         "load": "载重",
+        "vehicle_count": "车辆数",
         "paused": "已暂停",
         "running": "运行中",
         "help1": "SPACE 暂停/继续",
@@ -246,6 +248,7 @@ TEXT = {
         "max_queue": "Max queue",
         "wait_time": "Wait time",
         "load": "Load",
+        "vehicle_count": "Vehicles",
         "paused": "Paused",
         "running": "Running",
         "help1": "SPACE pause/resume",
@@ -1209,8 +1212,8 @@ def draw_summary_card(
     badge_rect = pygame.Rect(inner.right - badge_w, inner.top - 2, badge_w, badge_h)
     draw_status_badge(surface, run_label, fonts, badge_rect, WARNING if paused else SUCCESS)
 
-    row_h = max(scale_px(18, 18, 23), fonts.tiny.get_height() + scale_px(5, 5, 7))
-    y = inner.top + scale_px(22, 22, 28)
+    row_h = max(scale_px(16, 16, 21), fonts.tiny.get_height() + scale_px(3, 3, 5))
+    y = inner.top + scale_px(20, 20, 24)
     y = draw_metric_row(surface, labels["time"], f"{safe_get_metric(metrics, 'current_time', 0)} min", fonts, inner, y, line_height=row_h) or y
     strategy = shorten_text(safe_get_metric(metrics, "strategy", "-"), 12)
     y = draw_metric_row(surface, labels["strategy"], strategy, fonts, inner, y, line_height=row_h) or y
@@ -1218,14 +1221,19 @@ def draw_summary_card(
     scale = safe_get_metric(metrics, "scale", "-")
     if difficulty is not None:
         mode_value = f"{shorten_text(difficulty, 7)} / {shorten_text(scale, 8)}"
-        draw_metric_row(surface, "Mode", mode_value, fonts, inner, y, line_height=row_h, value_chars=18)
+        y = draw_metric_row(surface, "Mode", mode_value, fonts, inner, y, line_height=row_h, value_chars=18) or y
     else:
-        draw_metric_row(surface, labels["scale"], scale, fonts, inner, y, line_height=row_h)
+        y = draw_metric_row(surface, labels["scale"], scale, fonts, inner, y, line_height=row_h) or y
+    vehicle_count = safe_get_metric(metrics, "vehicle_count", None)
+    if vehicle_count is not None:
+        draw_metric_row(surface, labels["vehicle_count"], vehicle_count, fonts, inner, y, line_height=row_h)
 
 
 def draw_metrics_card(surface: pygame.Surface, rect: pygame.Rect, metrics: Dict, fonts: FontSet, labels: Dict) -> None:
     inner = draw_card(surface, rect, labels["metrics"], fonts)
-    score_rect = pygame.Rect(inner.left, inner.top, inner.width, scale_px(56, 52, 72))
+    lower_block_h = max(scale_px(42, 42, 54), fonts.tiny.get_height() + fonts.normal.get_height() + scale_px(6, 6, 9))
+    score_h = max(scale_px(48, 44, 64), inner.height - lower_block_h - scale_px(6, 6, 8))
+    score_rect = pygame.Rect(inner.left, inner.top, inner.width, score_h)
     draw_metric_big_number(
         surface,
         labels["score"],
@@ -1235,8 +1243,8 @@ def draw_metrics_card(surface: pygame.Surface, rect: pygame.Rect, metrics: Dict,
         INFO,
     )
 
-    lower_y = score_rect.bottom + scale_px(8, 8, 12)
-    value_offset = max(scale_px(18, 18, 24), fonts.tiny.get_height() + scale_px(3, 3, 5))
+    lower_y = min(score_rect.bottom + scale_px(6, 6, 8), inner.bottom - lower_block_h)
+    value_offset = max(scale_px(17, 17, 22), fonts.tiny.get_height() + scale_px(2, 2, 4))
     completed = safe_get_metric(metrics, "completed_tasks", 0)
     timeout = safe_get_metric(metrics, "timeout_tasks", 0)
     draw_text(surface, labels.get("completed_short", labels["completed"]), fonts.tiny, TEXT_MUTED, (inner.left, lower_y))
@@ -1250,19 +1258,18 @@ def draw_charging_card(surface: pygame.Surface, rect: pygame.Rect, metrics: Dict
     rows = [
         ("Requests", safe_get_metric(metrics, "charging_requests", 0), TEXT_MAIN),
         ("Charging", safe_get_metric(metrics, "charging_times", 0), SUCCESS),
-        ("Queue events", safe_get_metric(metrics, "charging_queue_events", 0), WARNING),
+        ("Queue evt", safe_get_metric(metrics, "charging_queue_events", 0), WARNING),
         ("Max queue", safe_get_metric(metrics, "max_queue_length", 0), WARNING),
-        ("Wait time", safe_get_metric(metrics, "total_charging_wait_time", 0), TEXT_MAIN),
+        ("Wait", safe_get_metric(metrics, "total_charging_wait_time", 0), TEXT_MAIN),
     ]
 
     y = inner.top
-    row_h = max(scale_px(17, 17, 22), fonts.tiny.get_height() + scale_px(4, 4, 6))
+    if not rows:
+        return
+    row_h = max(1, inner.height // len(rows))
     for label, value, color in rows:
-        next_y = draw_metric_row(surface, label, value, fonts, inner, y, color, line_height=row_h, value_chars=11)
-        if next_y is None:
-            draw_text(surface, "...", fonts.tiny, TEXT_MUTED, (inner.left, max(inner.top, inner.bottom - row_h)))
-            break
-        y = next_y
+        draw_metric_row(surface, label, value, fonts, inner, y, color, line_height=row_h, label_chars=12, value_chars=11)
+        y += row_h
 
 
 def draw_vehicle_list_card(
@@ -1274,15 +1281,15 @@ def draw_vehicle_list_card(
     metrics: Dict | None = None,
 ) -> None:
     inner = draw_card(surface, rect, labels["vehicles"], fonts)
-    row_height = max(scale_px(34, 34, 43), fonts.tiny.get_height() * 2 + scale_px(10, 10, 14))
-    max_rows = min(5, max(0, (inner.height - scale_px(18, 18)) // row_height))
+    row_height = max(scale_px(23, 23, 30), fonts.tiny.get_height() + scale_px(7, 7, 10))
+    max_rows = min(VEHICLE_LIST_MAX_ROWS, max(0, (inner.height - scale_px(8, 8)) // row_height))
     shown = 0
 
     for index, vehicle in enumerate(vehicles or []):
         if shown >= max_rows:
             break
         row_y = inner.top + shown * row_height
-        if row_y + row_height > inner.bottom - scale_px(16, 16):
+        if row_y + row_height > inner.bottom - scale_px(8, 8):
             break
 
         vehicle_id = shorten_text(vehicle.get("id", f"V{index + 1}"), 8)
@@ -1293,22 +1300,22 @@ def draw_vehicle_list_card(
 
         draw_text(surface, vehicle_id, fonts.tiny, TEXT_MAIN, (inner.left, row_y))
         id_offset = scale_px(36, 34, 44)
-        badge_w = scale_px(68, 68, 86)
-        badge_h = scale_px(19, 19, 24)
+        badge_w = scale_px(62, 62, 78)
+        badge_h = scale_px(17, 17, 22)
         badge_rect = pygame.Rect(inner.left + id_offset, row_y - 2, badge_w, badge_h)
         draw_status_badge(surface, status, fonts, badge_rect, status_color, max_chars=9)
         if battery_level < 20:
             low_rect = pygame.Rect(badge_rect.right + scale_px(4, 4), row_y - 2, scale_px(36, 36, 44), badge_h)
             draw_status_badge(surface, "LOW", fonts, low_rect, DANGER, max_chars=5)
 
-        bar_w = min(scale_px(98, 98, 132), max(86, inner.width // 3))
-        bar_h = scale_px(15, 15, 20)
+        bar_w = min(scale_px(88, 88, 116), max(76, inner.width // 3))
+        bar_h = scale_px(12, 12, 16)
         bar_rect = pygame.Rect(inner.right - bar_w, row_y, bar_w, bar_h)
         draw_battery_bar(surface, bar_rect, battery_level, battery_text, fonts)
 
         load_value = vehicle.get("load", "N/A")
-        load_text = f"{labels['load']}: {shorten_text(load_value, 8)}"
-        draw_text(surface, load_text, fonts.tiny, TEXT_MUTED, (inner.left + id_offset, row_y + scale_px(18, 17, 23)))
+        load_text = f"L:{shorten_text(load_value, 7)}"
+        draw_text(surface, load_text, fonts.tiny, TEXT_MUTED, (inner.left, row_y + scale_px(13, 13, 17)))
         shown += 1
 
     remaining = max(0, len(vehicles or []) - shown)
@@ -1330,15 +1337,15 @@ def draw_panel(surface: pygame.Surface, state: Dict, fonts: FontSet, paused: boo
     card_w = PANEL_RECT.width - panel_padding * 2
     gap = scale_px(10, 10, 14)
 
-    summary_rect = pygame.Rect(x, y, card_w, scale_px(124, 124, 158))
+    summary_rect = pygame.Rect(x, y, card_w, scale_px(118, 118, 150))
     draw_summary_card(surface, summary_rect, metrics, fonts, labels, paused)
 
     y += summary_rect.height + gap
-    metrics_rect = pygame.Rect(x, y, card_w, scale_px(136, 136, 170))
+    metrics_rect = pygame.Rect(x, y, card_w, scale_px(148, 148, 184))
     draw_metrics_card(surface, metrics_rect, metrics, fonts, labels)
 
     y += metrics_rect.height + gap
-    charging_rect = pygame.Rect(x, y, card_w, scale_px(142, 142, 180))
+    charging_rect = pygame.Rect(x, y, card_w, scale_px(136, 136, 166))
     draw_charging_card(surface, charging_rect, metrics, fonts, labels)
 
     y += charging_rect.height + gap

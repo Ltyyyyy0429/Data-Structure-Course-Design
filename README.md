@@ -28,13 +28,12 @@ python demo_simulator_real_pathfinder.py     # 完整仿真 + 真实路径规划
 启动可视化 UI：
 
 ```bash
-python3 ui/pygame_app.py
-python3 ui/simulator_app.py
+python3 ui/pygame_app.py   # 假数据 UI / 备用检查入口
 python3 ui/simulator_app.py --scale large --difficulty hard --strategy energy_aware_hybrid
 python3 ui/simulator_app.py --scale large --difficulty hard --strategy energy_aware_hybrid --demo-low-battery
 ```
 
-`ui/pygame_app.py` 是假数据 UI / 备用界面检查入口，不依赖仿真引擎。`ui/simulator_app.py` 是答辩展示推荐入口，连接当前 Simulator，支持 `--scale small|medium|large|extra_large`、`--difficulty easy|medium|hard`、`--strategy nearest|largest|energy_aware_hybrid|genetic_algorithm`。`--demo-low-battery` 会人为降低第一辆车电量，方便录屏时观察充电逻辑；正式实验结果以 `batch_experiment.py` 生成的 `results/experiment_results.csv` 为准。
+`ui/pygame_app.py` 是假数据 UI / 备用界面检查入口，不依赖仿真引擎。`ui/simulator_app.py --scale large --difficulty hard --strategy energy_aware_hybrid` 是答辩展示推荐入口，连接当前 Simulator 并默认展示较大的城市地图；也支持 `--scale small|medium|large|extra_large`、`--difficulty easy|medium|hard`、`--strategy nearest|largest|energy_aware_hybrid|genetic_algorithm`。`--demo-low-battery` 会人为降低第一辆车电量，方便录屏时观察充电逻辑；正式实验结果以 `batch_experiment.py` 生成的 `results/experiment_results.csv` 为准。
 
 键盘操作：
 - `SPACE`：暂停 / 继续
@@ -198,8 +197,7 @@ GA 适应度与 Hybrid 打分使用统一的百分制公式：收益归一化用
 推荐展示命令：
 
 ```bash
-python3 ui/pygame_app.py
-python3 ui/simulator_app.py
+python3 ui/pygame_app.py   # 假数据 UI / 备用检查入口
 python3 ui/simulator_app.py --scale large --difficulty hard --strategy energy_aware_hybrid
 python3 ui/simulator_app.py --scale large --difficulty hard --strategy energy_aware_hybrid --demo-low-battery
 ```
