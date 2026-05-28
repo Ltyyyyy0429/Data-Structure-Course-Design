@@ -502,3 +502,4 @@ B/C 模块通过 RealPathfinder 调用:
 | **GA 死亡冲锋硬约束** | GA 包含时间可行性预检：若赶路时间已超过 deadline 剩余时间，该分配直接判不可行，与 hybrid 策略一致。 |
 | **任务 ID 碰撞防护** | `add_test_task` 始终执行 `self.next_task_id = max(self.next_task_id, len(self.tasks) + 1000)`，确保 UI 手动加任务与自动生成任务 ID 不碰撞。 |
 | **TaskGenerator 已实现** | `simulator/task_generator.py` 不再是死代码。Simulator 在提供 `config` 时会构造 `TaskGenerator` 实例并委托任务生成。 |
+| **车辆数覆盖 Bug 修复 (2026-05-28)** | `simulator/simulator.py` 第 96-102 行无条件覆盖难度配置中的车辆数为 5/10/15，导致 HARD 难度车辆数被抬高 2-4 倍、策略差异被抹平。修复方式：将规模覆盖移入 `else` 分支（无 config fallback），有 config 时 `vc.count_for_scale(scale)` 原样生效。 |

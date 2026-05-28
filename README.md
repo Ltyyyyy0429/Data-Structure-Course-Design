@@ -173,6 +173,7 @@ Simulator 核心流程：时间步进 → 车辆沿路径移动耗电 → 低电
 - 载重二级防御：策略层 + Simulator 层双重检查载重可行性
 - TaskGenerator：支持 burst 突发模式与空间聚集，由 DifficultyConfig 参数化控制
 - 充电排队去重防御性清理
+- **车辆数正确传递**（2026-05-28 修复）：规模覆盖逻辑已从无条件执行移入无 config 的 fallback 路径，难度配置中的 `VehicleConfig.count_for_scale()` 值（EASY=3/3/3/3, MEDIUM=3/3/3/3, HARD=2/3/4/5）现在直接生效，不再被硬编码 5/10/15 覆盖
 
 ## C 四种调度策略
 

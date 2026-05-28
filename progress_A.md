@@ -555,3 +555,68 @@ PR #16 合并后审查发现 4 个 bug：`consume_rate` 参数被硬编码忽略
 - `test_integration.py` — 通过
 - GA dispatch 烟雾测试：`consume_rate=0.6` 正确传递，GA 策略正常输出 action
 - GA 评分一致性验证：适应度函数公式与 hybrid 策略逐项匹配
+
+---
+
+## 十三、车辆数覆盖 Bug 修复（2026-05-28 完成）
+
+### 问题
+
+`simulator/simulator.py` 第 96-102 行存在无条件执行的硬编码车辆数覆盖：
+
+```python
+# 第 64 行：先从难度配置正确读取
+self.vehicle_count = vc.count_for_scale(scale)
+
+# 第 96-102 行：然后无条件覆盖！
+if scale == "small":
+    self.vehicle_count = 5
+elif scale == "medium":
+    self.vehicle_count = 10
+elif scale == "large":
+    self.vehicle_count = 15
+```
+
+这段代码在 `if config is not None` 分支**之后**无条件执行，导致难度配置中的车辆数被全部覆盖：
+
+| 规模 | 难度预设值 | 实际值 | 偏差 |
+|------|-----------|--------|------|
+| small (EASY) | 3 | 5 | +67% |
+| small (HARD) | 2 | 5 | +150% |
+| medium (MEDIUM) | 3 | 10 | +233% |
+| large (HARD) | 4 | 15 | +275% |
+| extra_large | 3/5 | 不变 | 正常（无覆盖分支） |
+
+### 影响
+
+1. **车辆过剩抹平策略差异**：车辆数远超设计值时，没有资源竞争，nearest/largest baseline 与 energy_aware_hybrid/GA 的智能调度差异被掩盖
+2. **HARD 难度的核心压力维度失效**：HARD 设计用更少车辆制造压力，但被硬编码抬高 2-4 倍
+3. **extra_large 异常**：唯一走正确路径的规模，实验数据会出现不合理的断层
+
+### 修复
+
+将规模覆盖逻辑移入 `else` 分支（无 config 的 fallback 路径），有 config 时 `vc.count_for_scale(scale)` 原样生效：
+
+```python
+# else 分支内（无 config fallback）
+if scale == "small":
+    self.vehicle_count = 5
+elif scale == "medium":
+    self.vehicle_count = 10
+elif scale == "large":
+    self.vehicle_count = 15
+elif scale == "extra_large":
+    self.vehicle_count = 20
+else:
+    self.vehicle_count = 3
+```
+
+### 涉及文件
+
+| 文件 | 改动类型 |
+|------|----------|
+| [simulator/simulator.py](simulator/simulator.py) | 修复：规模覆盖移入 else 分支，删除无条件覆盖块 |
+| [CLAUDE.md](CLAUDE.md) | 文档：新增 VehicleCount 覆盖 Gotcha |
+| [README.md](README.md) | 文档：记录修复 |
+| [progress_A.md](progress_A.md) | 进度：新增本节 |
+| [progress_all.md](progress_all.md) | 进度：更新修复记录 |

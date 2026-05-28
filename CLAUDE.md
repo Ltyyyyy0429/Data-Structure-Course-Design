@@ -306,6 +306,8 @@ A/B/C/D 四个模块通过 6 字段 `state` 字典通信：
 - 项目无 `.python-version`、虚拟环境创建指引，新成员上手需口头传递环境配置
 - Python 版本需 ≥ 3.10（代码中使用了 PEP 604 `str | Path` 联合类型语法）
 
+**车辆数覆盖 Bug（2026-05-28 修复）**：原 `simulator/simulator.py` 第 96-102 行存在无条件执行的 `if scale == "small": vehicle_count = 5` 覆盖块，导致难度配置中的车辆数被完全覆盖（HARD small 从 2→5，MEDIUM medium 从 3→10）。修复方式：将规模覆盖逻辑移入 `else` 分支（无 config 的 fallback 路径），有 config 时 `vc.count_for_scale(scale)` 直接生效。详见 [progress_A.md](progress_A.md) 第十三节。
+
 ### 测试
 
 - 测试通过直接 `python test_*.py` 运行，无 pytest/unittest 封装
