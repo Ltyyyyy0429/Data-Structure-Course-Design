@@ -209,6 +209,8 @@ python3 ui/simulator_app.py --scale large --difficulty hard --strategy energy_aw
 - 难度：`easy`, `medium`, `hard`
 - 策略：`nearest`, `largest`, `energy_aware_hybrid`, `genetic_algorithm`
 
+UI 车辆数不做额外演示覆盖，直接读取 Simulator 实际创建的车辆数量。当前核心配置为：EASY/MEDIUM 均为 `3/3/3/3`，HARD 为 `2/3/4/5`，对应 `small/medium/large/extra_large`。
+
 其中 `--demo-low-battery` 只用于可视化演示，方便观察低电量与充电行为；正式实验数据不以 UI 演示为准。
 
 ### Matplotlib 图表

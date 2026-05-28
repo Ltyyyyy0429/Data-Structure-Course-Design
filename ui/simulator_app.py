@@ -41,7 +41,6 @@ LOW_BATTERY_VALUE = 15.0
 UI_DIFFICULTY = "easy"
 UI_SCALE = "small"
 UI_STRATEGY = "nearest"
-PRESENTATION_FLEET_BY_SCALE = False
 SUPPORTED_DIFFICULTIES = ("easy", "medium", "hard")
 SCALE_TO_MAP_FILE = {
     "small": "data/small_map.json",
@@ -54,12 +53,6 @@ SUPPORTED_STRATEGIES = {
     "largest",
     "energy_aware_hybrid",
     "genetic_algorithm",
-}
-SCALE_COUNT_FIELD = {
-    "small": "count_small",
-    "medium": "count_medium",
-    "large": "count_large",
-    "extra_large": "count_extra_large",
 }
 
 
@@ -137,40 +130,6 @@ def choose_demo_task_nodes(pathfinder: RealPathfinder, count: int = 3) -> list[i
     return selected[:count]
 
 
-def get_presentation_vehicle_count(scale: str, difficulty: str) -> int:
-    """Derive a scale-aware UI fleet size from current ABC difficulty config.
-
-    In ABC's current settings, hard difficulty already expresses the intended
-    scale growth: small=2, medium=3, large=4, extra_large=5. For presentation,
-    keep the selected difficulty's own count as the floor, then use hard's
-    scale-aware count when it is larger.
-    """
-
-    selected_config = get_difficulty_config(scale, difficulty)
-    hard_config = get_difficulty_config(scale, "hard")
-    selected_count = selected_config.vehicle.count_for_scale(scale)
-    hard_scale_count = hard_config.vehicle.count_for_scale(scale)
-    return max(selected_count, hard_scale_count)
-
-
-def apply_presentation_fleet_size(config, scale: str, difficulty: str) -> None:
-    """Optional UI-only fleet override.
-
-    It is disabled by default so the display follows the vehicle count that
-    B's Simulator actually creates from the current core configuration.
-    """
-
-    if not PRESENTATION_FLEET_BY_SCALE:
-        return
-
-    count_field = SCALE_COUNT_FIELD.get(scale)
-    if not count_field:
-        return
-
-    vehicle_count = get_presentation_vehicle_count(scale, difficulty)
-    setattr(config.vehicle, count_field, vehicle_count)
-
-
 def get_actual_vehicle_count(simulator: Simulator) -> int:
     """Read the fleet size that B's Simulator actually created."""
 
@@ -220,7 +179,6 @@ def create_simulator(strategy: str = "nearest", difficulty: str = "easy", scale:
     map_file = SCALE_TO_MAP_FILE[scale]
     pathfinder = RealPathfinder(map_file)
     config = get_difficulty_config(scale, difficulty)
-    apply_presentation_fleet_size(config, scale, difficulty)
     graph_data = build_b_graph_from_pathfinder(pathfinder)
     simulator = Simulator(
         graph_data=graph_data,
